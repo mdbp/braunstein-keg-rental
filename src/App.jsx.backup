@@ -1,0 +1,2263 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Package, CheckCircle, Truck, RotateCcw, X, Bell, Settings, BarChart3, MapPin, Clock, User, RefreshCw, Plus, Minus, Edit2, UserCheck } from 'lucide-react';
+
+export default function BraunsteinKegRentalSystem() {
+  // All state variables
+  const [currentView, setCurrentView] = useState('main');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [showFacilityDropdown, setShowFacilityDropdown] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+  const [employeeModalConfig, setEmployeeModalConfig] = useState({ title: '', callback: null });
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedFacilities, setSelectedFacilities] = useState([]);
+  const [expandedFacilities, setExpandedFacilities] = useState({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [pickingQuantities, setPickingQuantities] = useState({});
+  const [customerName, setCustomerName] = useState('');
+  const [signaturePaths, setSignaturePaths] = useState([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentPath, setCurrentPath] = useState('');
+  const [returnOrder, setReturnOrder] = useState(null);
+  const [emptyKegs, setEmptyKegs] = useState(0);
+  const [fullKegs, setFullKegs] = useState(0);
+  const [returnNotes, setReturnNotes] = useState('');
+  const [drypbakkeReceived, setDrypbakkeReceived] = useState(false);
+  const [isLoadingShopify, setIsLoadingShopify] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteModalConfig, setNoteModalConfig] = useState({ 
+    title: '', 
+    placeholder: '', 
+    callback: null,
+    value: ''
+  });
+
+  const canvasRef = useRef(null);
+  const [touchPosition, setTouchPosition] = useState({ x: 0, y: 0 });
+
+  const [orders, setOrders] = useState([
+    {
+      id: '1001',
+      orderNumber: '#1001',
+      customer: 'Copenhagen Restaurant',
+      customerPhone: '+45 33 12 45 67',
+      status: 'pending',
+      priority: 'høj',
+      deliveryDate: '12.9.2025',
+      rentalStartDate: '12.9.2025',
+      rentalEndDate: '19.9.2025',
+      items: [
+        { id: '1', name: 'Braunstein Classic IPA 20L', quantity: 2, picked: 0 },
+        { id: '2', name: 'Fadølsanlæg Premium', quantity: 1, picked: 0 }
+      ],
+      totalItems: 3,
+      notes: '',
+      customerSignature: null
+    },
+    {
+      id: '1002',
+      orderNumber: '#1002',
+      customer: 'Bar Brewhouse',
+      customerPhone: '+45 26 78 90 12',
+      status: 'packed',
+      priority: 'normal',
+      deliveryDate: '13.9.2025',
+      rentalStartDate: '13.9.2025',
+      rentalEndDate: '20.9.2025',
+      items: [
+        { id: '3', name: 'Braunstein Pilsner 20L', quantity: 1, picked: 1 },
+        { id: '4', name: 'Braunstein Amber Ale 20L', quantity: 1, picked: 1 }
+      ],
+      totalItems: 2,
+      packedBy: 'Thomas Andersen',
+      packedDate: '13.9.2025',
+      packedTime: '09:15',
+      assignedFacilities: ['ANL-001'],
+      notes: 'Klar til afhentning',
+      customerSignature: null
+    },
+    {
+      id: '1003',
+      orderNumber: '#1003',
+      customer: 'Nyhavn Brasserie',
+      customerPhone: '+45 33 85 22 14',
+      status: 'shipped',
+      priority: 'normal',
+      deliveryDate: '11.9.2025',
+      rentalStartDate: '11.9.2025',
+      rentalEndDate: '10.9.2025',
+      items: [
+        { id: '5', name: 'Braunstein Dark Lager 20L', quantity: 3, picked: 3 },
+        { id: '6', name: 'Fadølsanlæg Standard', quantity: 2, picked: 2 }
+      ],
+      totalItems: 5,
+      packedBy: 'Michael Poulsen',
+      packedDate: '11.9.2025',
+      packedTime: '08:30',
+      packingNotes: 'Pakket med omhu',
+      shippedBy: 'Anders Bang',
+      shippedDate: '11.9.2025',
+      shippedTime: '14:45',
+      shippingNotes: 'Leveret til bagindgang',
+      assignedFacilities: ['ANL-002', 'ANL-004'],
+      notes: 'Leveret - afventer retur',
+      customerSignature: null
+    }
+  ]);
+
+  const [facilities, setFacilities] = useState([
+    // 2 Haners anlæg (001-010)
+    { 
+      id: 'ANL-001', 
+      name: 'Anlæg 001 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '15.8.2025', 
+      lastCleaned: '1.9.2025', 
+      totalRentals: 28,
+      cleaningHistory: [
+        { date: '1.9.2025', employee: 'Thomas Andersen', notes: 'Standard rensning', type: 'cleaning' }
+      ]
+    },
+    { 
+      id: 'ANL-002', 
+      name: 'Anlæg 002 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '20.7.2025', 
+      lastCleaned: '28.8.2025', 
+      totalRentals: 31,
+      cleaningHistory: [
+        { date: '28.8.2025', employee: 'Anders Bang', notes: 'Standard rensning', type: 'cleaning' }
+      ]
+    },
+    { 
+      id: 'ANL-003', 
+      name: 'Anlæg 003 - 2 haners anlæg', 
+      status: 'maintenance', 
+      lastService: '1.9.2025', 
+      serviceNote: 'CO2 system reparation', 
+      lastCleaned: '2.9.2025', 
+      totalRentals: 19,
+      cleaningHistory: [
+        { date: '2.9.2025', employee: 'Michael Poulsen', notes: 'Rensning før service', type: 'cleaning' }
+      ]
+    },
+    { 
+      id: 'ANL-004', 
+      name: 'Anlæg 004 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '10.8.2025', 
+      lastCleaned: '5.9.2025', 
+      totalRentals: 15
+    },
+    { 
+      id: 'ANL-005', 
+      name: 'Anlæg 005 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '25.7.2025', 
+      lastCleaned: '30.8.2025', 
+      totalRentals: 22
+    },
+    { 
+      id: 'ANL-006', 
+      name: 'Anlæg 006 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '5.8.2025', 
+      lastCleaned: '25.8.2025', 
+      totalRentals: 18
+    },
+    { 
+      id: 'ANL-007', 
+      name: 'Anlæg 007 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '12.8.2025', 
+      lastCleaned: '3.9.2025', 
+      totalRentals: 25
+    },
+    { 
+      id: 'ANL-008', 
+      name: 'Anlæg 008 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '18.7.2025', 
+      lastCleaned: '27.8.2025', 
+      totalRentals: 33
+    },
+    { 
+      id: 'ANL-009', 
+      name: 'Anlæg 009 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '22.8.2025', 
+      lastCleaned: '8.9.2025', 
+      totalRentals: 12
+    },
+    { 
+      id: 'ANL-010', 
+      name: 'Anlæg 010 - 2 haners anlæg', 
+      status: 'active', 
+      lastService: '30.7.2025', 
+      lastCleaned: '20.8.2025', 
+      totalRentals: 29
+    },
+    // 1 Haners anlæg (020-030)
+    { 
+      id: 'ANL-020', 
+      name: 'Anlæg 020 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '8.8.2025', 
+      lastCleaned: '31.8.2025', 
+      totalRentals: 45
+    },
+    { 
+      id: 'ANL-021', 
+      name: 'Anlæg 021 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '14.7.2025', 
+      lastCleaned: '26.8.2025', 
+      totalRentals: 38
+    },
+    { 
+      id: 'ANL-022', 
+      name: 'Anlæg 022 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '19.8.2025', 
+      lastCleaned: '4.9.2025', 
+      totalRentals: 41
+    },
+    { 
+      id: 'ANL-023', 
+      name: 'Anlæg 023 - 1 haners anlæg', 
+      status: 'maintenance', 
+      lastService: '11.8.2025', 
+      serviceNote: 'Hane udskiftning',
+      lastCleaned: '29.8.2025', 
+      totalRentals: 50
+    },
+    { 
+      id: 'ANL-024', 
+      name: 'Anlæg 024 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '3.8.2025', 
+      lastCleaned: '22.8.2025', 
+      totalRentals: 36
+    },
+    { 
+      id: 'ANL-025', 
+      name: 'Anlæg 025 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '28.7.2025', 
+      lastCleaned: '7.9.2025', 
+      totalRentals: 42
+    },
+    { 
+      id: 'ANL-026', 
+      name: 'Anlæg 026 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '16.8.2025', 
+      lastCleaned: '24.8.2025', 
+      totalRentals: 48
+    },
+    { 
+      id: 'ANL-027', 
+      name: 'Anlæg 027 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '21.7.2025', 
+      lastCleaned: '19.8.2025', 
+      totalRentals: 35
+    },
+    { 
+      id: 'ANL-028', 
+      name: 'Anlæg 028 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '9.8.2025', 
+      lastCleaned: '6.9.2025', 
+      totalRentals: 39
+    },
+    { 
+      id: 'ANL-029', 
+      name: 'Anlæg 029 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '24.7.2025', 
+      lastCleaned: '21.8.2025', 
+      totalRentals: 44
+    },
+    { 
+      id: 'ANL-030', 
+      name: 'Anlæg 030 - 1 haners anlæg', 
+      status: 'active', 
+      lastService: '6.8.2025', 
+      lastCleaned: '10.9.2025', 
+      totalRentals: 37
+    }
+  ]);
+
+  const employees = [
+    { id: 'EMP001', name: 'Michael Poulsen' },
+    { id: 'EMP002', name: 'Claus Braunstein' },
+    { id: 'EMP003', name: 'Thomas Andersen' },
+    { id: 'EMP004', name: 'Jimmy Jeppson' },
+    { id: 'EMP005', name: 'Anders Bang' }
+  ];
+
+  const categories = [
+    { id: 'nye', title: 'Nye Ordre', subtitle: 'Ventende ordrer klar til plukning', icon: Package, color: 'blue', status: 'pending' },
+    { id: 'udlevering', title: 'Til Udlevering', subtitle: 'Ordre klar til kundeunderskrift', icon: CheckCircle, color: 'green', status: 'packed' },
+    { id: 'modtag_retur', title: 'Modtag Ordre Retur', subtitle: 'Registrer returnerede anlæg', icon: Truck, color: 'orange', status: 'shipped' },
+    { id: 'forsinket', title: 'Anlæg Forsinket', subtitle: 'Anlæg ikke leveret tilbage til tiden', icon: Clock, color: 'red', status: 'overdue' },
+    { id: 'retur', title: 'Retur Ordre', subtitle: 'Returnerede ordre', icon: RotateCcw, color: 'purple', status: 'returned' }
+  ];
+
+  // SHOPIFY API INTEGRATION
+  const playNotificationSound = () => {
+    // Create a beep sound using Web Audio API
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Configure the beep sound
+    oscillator.frequency.value = 800; // Frequency in Hz (800Hz for a pleasant beep)
+    oscillator.type = 'sine'; // Sine wave for smooth sound
+    gainNode.gain.value = 0.3; // Volume (30%)
+    
+    // Play the beep
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.2); // 200ms beep
+    
+    // Play a second beep after a short pause for "bib-bib" effect
+    setTimeout(() => {
+      const oscillator2 = audioContext.createOscillator();
+      const gainNode2 = audioContext.createGain();
+      
+      oscillator2.connect(gainNode2);
+      gainNode2.connect(audioContext.destination);
+      
+      oscillator2.frequency.value = 800;
+      oscillator2.type = 'sine';
+      gainNode2.gain.value = 0.3;
+      
+      oscillator2.start(audioContext.currentTime);
+      oscillator2.stop(audioContext.currentTime + 0.2);
+    }, 250); // 250ms pause between beeps
+  };
+
+  const fetchShopifyOrders = async () => {
+    setIsLoadingShopify(true);
+    try {
+      // Demo API call - replace with actual Shopify endpoint
+      const response = await fetch('/api/shopify/orders');
+      
+      // Simulate API response for demo
+      setTimeout(() => {
+        const newOrder = {
+          id: Date.now().toString(),
+          orderNumber: `#${1004 + orders.length - 3}`,
+          customer: 'Shopify Kunde - ' + new Date().toLocaleTimeString(),
+          customerPhone: '+45 ' + Math.floor(Math.random() * 90000000 + 10000000),
+          status: 'pending',
+          priority: Math.random() > 0.5 ? 'høj' : 'normal',
+          deliveryDate: new Date(Date.now() + 86400000).toLocaleDateString('da-DK'),
+          rentalStartDate: new Date(Date.now() + 86400000).toLocaleDateString('da-DK'),
+          rentalEndDate: new Date(Date.now() + 7 * 86400000).toLocaleDateString('da-DK'),
+          items: [
+            { 
+              id: 'SH' + Date.now(), 
+              name: 'Braunstein Special ' + Math.floor(Math.random() * 3 + 1) + '0L', 
+              quantity: Math.floor(Math.random() * 3 + 1), 
+              picked: 0 
+            }
+          ],
+          totalItems: Math.floor(Math.random() * 3 + 1),
+          notes: 'Ordre fra Shopify',
+          customerSignature: null
+        };
+        
+        setOrders(prev => [...prev, newOrder]);
+        
+        // Play notification sound
+        playNotificationSound();
+        
+        // Show notification with sound icon
+        alert(`🔔 NY ORDRE!\n\nOrdre: ${newOrder.orderNumber}\nKunde: ${newOrder.customer}\n\n*bib-bib*`);
+        
+        setIsLoadingShopify(false);
+      }, 1500);
+      
+    } catch (error) {
+      console.error('Fejl ved hentning af Shopify ordre:', error);
+      alert('Kunne ikke hente ordre fra Shopify. Tjek forbindelse.');
+      setIsLoadingShopify(false);
+    }
+  };
+
+  // Helper functions
+  const getOrdersByStatus = (status) => {
+    if (status === 'overdue') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      return orders.filter(order => {
+        if (order.status !== 'shipped') return false;
+        
+        const dateParts = order.rentalEndDate.split('.');
+        const endDate = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
+        endDate.setHours(0, 0, 0, 0);
+        
+        return endDate < today;
+      });
+    }
+    return orders.filter(order => order.status === status);
+  };
+  
+  const getColorClasses = (color) => {
+    const colors = {
+      blue: { bg: 'bg-blue-50', text: 'text-blue-600', button: 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800' },
+      green: { bg: 'bg-green-50', text: 'text-green-600', button: 'bg-green-600 hover:bg-green-700 active:bg-green-800' },
+      orange: { bg: 'bg-orange-50', text: 'text-orange-600', button: 'bg-orange-600 hover:bg-orange-700 active:bg-orange-800' },
+      red: { bg: 'bg-red-50', text: 'text-red-600', button: 'bg-red-600 hover:bg-red-700 active:bg-red-800' },
+      purple: { bg: 'bg-purple-50', text: 'text-purple-600', button: 'bg-purple-600 hover:bg-purple-700 active:bg-purple-800' }
+    };
+    return colors[color] || colors.blue;
+  };
+
+  const getDaysOverdue = (endDate) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const dateParts = endDate.split('.');
+    const end = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
+    end.setHours(0, 0, 0, 0);
+    
+    const diffTime = today - end;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays > 0 ? diffDays : 0;
+  };
+
+  const categoryStats = {
+    'nye': getOrdersByStatus('pending').length,
+    'udlevering': getOrdersByStatus('packed').length,
+    'modtag_retur': getOrdersByStatus('shipped').length,
+    'forsinket': getOrdersByStatus('overdue').length,
+    'retur': getOrdersByStatus('returned').length
+  };
+
+  const getAvailableFacilities = () => {
+    return facilities.filter(facility => facility.status === 'active');
+  };
+
+  // Employee modal functions
+  const openEmployeeModal = (title, callback) => {
+    setEmployeeModalConfig({ title, callback });
+    setShowEmployeeModal(true);
+  };
+
+  const selectEmployee = (employee) => {
+    if (employeeModalConfig.callback) {
+      employeeModalConfig.callback(employee);
+    }
+    setShowEmployeeModal(false);
+    setEmployeeModalConfig({ title: '', callback: null });
+  };
+
+  // Navigation functions
+  const navigateToCategory = (category) => {
+    setSelectedCategory(category.id);
+    setCurrentView('orders');
+  };
+
+  const navigateToMain = () => {
+    setCurrentView('main');
+    setSelectedCategory('');
+    setShowFacilityDropdown(false);
+    setShowEditModal(false);
+    setShowSignatureModal(false);
+    setShowReturnModal(false);
+    setSelectedOrder(null);
+    setSelectedFacilities([]);
+    setSearchTerm('');
+  };
+
+  const navigateToAdmin = () => {
+    setCurrentView('admin');
+    setShowFacilityDropdown(false);
+    setShowEditModal(false);
+    setShowSignatureModal(false);
+    setShowReturnModal(false);
+    setSelectedOrder(null);
+    setSelectedFacilities([]);
+  };
+
+  // Order management functions
+  const startOrderPicking = (order) => {
+    setSelectedOrder(order);
+    const initialQuantities = {};
+    order.items.forEach(item => {
+      initialQuantities[item.id] = item.picked || 0;
+    });
+    setPickingQuantities(initialQuantities);
+    setSelectedFacilities([]);
+    setShowFacilityDropdown(true);
+  };
+
+  const updatePickingQuantity = (itemId, quantity) => {
+    setPickingQuantities(prev => ({
+      ...prev,
+      [itemId]: Math.max(0, quantity)
+    }));
+  };
+
+  const completeOrderPacking = (orderId, selectedFacilities) => {
+    const packingNotes = window.prompt('Indtast evt. bemærkninger til pakningen:') || '';
+    
+    openEmployeeModal('Vælg medarbejder til pakning af ordre', (employee) => {
+      const currentDate = new Date();
+      const timestamp = `${currentDate.toLocaleDateString('da-DK')} ${currentDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`;
+      
+      // Opdater facilities - øg totalRentals med 1 for hvert valgt anlæg
+      setFacilities(prev => prev.map(facility => {
+        if (selectedFacilities.some(f => f.id === facility.id)) {
+          return {
+            ...facility,
+            totalRentals: (facility.totalRentals || 0) + 1
+          };
+        }
+        return facility;
+      }));
+      
+      setOrders(prev => prev.map(order => {
+        if (order.id === orderId) {
+          return {
+            ...order,
+            status: 'packed',
+            packedBy: employee.name,
+            packedDate: currentDate.toLocaleDateString('da-DK'),
+            packedTime: currentDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }),
+            assignedFacilities: selectedFacilities.map(f => f.id),
+            packingNotes: packingNotes,
+            packingStamp: `${employee.name} - ${employee.id} - ${timestamp}`,
+            items: order.items.map(item => ({
+              ...item,
+              picked: pickingQuantities[item.id] || item.picked || 0
+            }))
+          };
+        }
+        return order;
+      }));
+
+      const facilityNames = selectedFacilities.map(f => f.name).join(', ');
+      alert(`Ordre ${selectedOrder.orderNumber} pakket af ${employee.name}!\n\nAnlæg tildelt: ${facilityNames}`);
+      
+      setSelectedOrder(null);
+      setSelectedFacilities([]);
+      setPickingQuantities({});
+      
+      // Navigate back to main menu
+      navigateToMain();
+    });
+  };
+
+  const startShipping = (order) => {
+    const shippingNotes = window.prompt('Indtast evt. bemærkninger til leveringen:') || '';
+    
+    openEmployeeModal('Vælg chauffør til levering', (employee) => {
+      const currentDate = new Date();
+      const timestamp = `${currentDate.toLocaleDateString('da-DK')} ${currentDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`;
+      
+      setOrders(prev => prev.map(o => 
+        o.id === order.id ? { 
+          ...o, 
+          status: 'shipped', 
+          shippedBy: employee.name,
+          shippedDate: currentDate.toLocaleDateString('da-DK'),
+          shippedTime: currentDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }),
+          shippingNotes: shippingNotes,
+          shippingStamp: `${employee.name} - ${employee.id} - ${timestamp}`,
+          packedBy: o.packedBy,
+          packedDate: o.packedDate,
+          packedTime: o.packedTime,
+          packingNotes: o.packingNotes,
+          packingStamp: o.packingStamp,
+          assignedFacilities: o.assignedFacilities
+        } : o
+      ));
+      alert(`Ordre ${order.orderNumber} sendt med ${employee.name}`);
+    });
+  };
+
+  const startSignature = (order) => {
+    setSelectedOrder(order);
+    setCustomerName(order.customer);
+    setSignaturePaths([]);
+    setShowSignatureModal(true);
+  };
+
+  // Return handling  
+  const handleReturnOrder = (order) => {
+    setReturnOrder(order);
+    setEmptyKegs(0);
+    setFullKegs(0);
+    setReturnNotes('');
+    setDrypbakkeReceived(false);
+    setShowReturnModal(true);
+  };
+
+  const completeReturn = () => {
+    if (!returnOrder) return;
+    
+    // Check if order was overdue
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dateParts = returnOrder.rentalEndDate.split('.');
+    const endDate = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
+    endDate.setHours(0, 0, 0, 0);
+    const daysOverdue = Math.ceil((today - endDate) / (1000 * 60 * 60 * 24));
+    const wasOverdue = daysOverdue > 0;
+    
+    // Save values before closing modal
+    const savedEmptyKegs = emptyKegs;
+    const savedFullKegs = fullKegs;
+    const savedReturnNotes = returnNotes;
+    const savedDrypbakkeReceived = drypbakkeReceived;
+    const savedReturnOrder = returnOrder;
+    
+    // Close return modal
+    setShowReturnModal(false);
+    
+    setTimeout(() => {
+      openEmployeeModal('Vælg medarbejder der håndterer retur', (employee) => {
+        const timestamp = new Date().toLocaleString('da-DK');
+        const returnNote = `Retur håndteret af ${employee.name} - ${timestamp}. Tomme fustager: ${savedEmptyKegs}, Fyldte fustager: ${savedFullKegs}${savedDrypbakkeReceived ? ', Drypbakke modtaget' : ''}${savedReturnNotes ? `. Årsag: ${savedReturnNotes}` : ''}${wasOverdue ? ` | FORSINKET RETUR: ${daysOverdue} dage` : ''}`;
+        
+        setOrders(prevOrders =>
+          prevOrders.map(o =>
+            o.id === savedReturnOrder.id
+              ? { 
+                  ...o, 
+                  status: 'returned',
+                  returnedBy: employee.name,
+                  emptyKegs: savedEmptyKegs,
+                  fullKegs: savedFullKegs,
+                  returnNotes: savedReturnNotes,
+                  drypbakkeReceived: savedDrypbakkeReceived,
+                  returnStamp: `${employee.name} - ${employee.id} - ${timestamp}`,
+                  wasOverdue: wasOverdue,
+                  daysOverdue: wasOverdue ? daysOverdue : 0,
+                  notes: (o.notes || '') + (o.notes ? ` | ${returnNote}` : returnNote)
+                }
+              : o
+          )
+        );
+        
+        // Reset all values
+        setReturnOrder(null);
+        setEmptyKegs(0);
+        setFullKegs(0);
+        setReturnNotes('');
+        setDrypbakkeReceived(false);
+        
+        // Show success message
+        if (wasOverdue) {
+          alert(`⚠️ FORSINKET RETUR registreret af ${employee.name}!\n\nOrdren var ${daysOverdue} dag(e) forsinket.`);
+        } else {
+          alert(`Retur registreret af ${employee.name}!`);
+        }
+        
+        // Navigate back to main menu
+        navigateToMain();
+      });
+    }, 100);
+  };
+
+  // Touch drawing functions for mobile
+  const startDrawing = (e) => {
+    setIsDrawing(true);
+    const rect = e.currentTarget.getBoundingClientRect();
+    let x, y;
+    
+    if (e.touches) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    
+    setCurrentPath(`M${x},${y}`);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    let x, y;
+    
+    if (e.touches) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    
+    setCurrentPath(prev => `${prev} L${x},${y}`);
+  };
+
+  const stopDrawing = () => {
+    if (isDrawing && currentPath) {
+      setSignaturePaths(prev => [...prev, currentPath]);
+      setCurrentPath('');
+    }
+    setIsDrawing(false);
+  };
+
+  // Admin functions
+  const updateFacility = (facilityId, updates) => {
+    setFacilities(prev => prev.map(facility => 
+      facility.id === facilityId ? { ...facility, ...updates } : facility
+    ));
+  };
+
+  const registerCleaning = (facility) => {
+    setNoteModalConfig({
+      title: `Registrer rensning af ${facility.name}`,
+      placeholder: 'Beskriv rensningen (f.eks. standard rensning, grundig rensning, problem løst osv.)',
+      value: '',
+      callback: (cleaningNotes) => {
+        openEmployeeModal(`Vælg medarbejder der udfører rensning`, (employee) => {
+          const newDate = new Date().toLocaleDateString('da-DK');
+          const timestamp = new Date().toLocaleString('da-DK');
+          const newCleaning = {
+            date: newDate,
+            employee: employee.name,
+            employeeId: employee.id,
+            notes: cleaningNotes,
+            type: 'cleaning',
+            stamp: `${employee.name} - ${employee.id} - ${timestamp}`
+          };
+          
+          updateFacility(facility.id, {
+            lastCleaned: newDate,
+            lastCleanedBy: employee.name,
+            lastCleaningStamp: newCleaning.stamp,
+            cleaningHistory: [newCleaning, ...(facility.cleaningHistory || [])]
+          });
+          
+          alert(`Rensning registreret af ${employee.name} for ${facility.name}\n\nBemærkninger: ${cleaningNotes}`);
+        });
+      }
+    });
+    setShowNoteModal(true);
+  };
+
+  const registerService = (facility) => {
+    setNoteModalConfig({
+      title: `Start service for ${facility.name}`,
+      placeholder: 'Beskriv hvad der skal serviceres (f.eks. CO2 system, hane udskiftning, kompressor service osv.)',
+      value: '',
+      callback: (serviceNotes) => {
+        openEmployeeModal(`Vælg medarbejder der starter service`, (employee) => {
+          const timestamp = new Date().toLocaleString('da-DK');
+          const newService = {
+            date: new Date().toLocaleDateString('da-DK'),
+            employee: employee.name,
+            employeeId: employee.id,
+            notes: serviceNotes,
+            type: 'service',
+            stamp: `${employee.name} - ${employee.id} - ${timestamp}`
+          };
+          
+          updateFacility(facility.id, {
+            status: 'maintenance',
+            serviceNote: serviceNotes,
+            lastServiceBy: employee.name,
+            lastServiceStamp: newService.stamp,
+            serviceHistory: [newService, ...(facility.serviceHistory || [])]
+          });
+          
+          alert(`Service påbegyndt af ${employee.name} for ${facility.name}\n\nService opgave: ${serviceNotes}`);
+        });
+      }
+    });
+    setShowNoteModal(true);
+  };
+
+  const completeService = (facility) => {
+    setNoteModalConfig({
+      title: `Afslut service for ${facility.name}`,
+      placeholder: 'Beskriv hvad der blev udført (f.eks. nye dele installeret, system testet, problem løst osv.)',
+      value: '',
+      callback: (completionNotes) => {
+        openEmployeeModal(`Vælg medarbejder der afslutter service`, (employee) => {
+          const timestamp = new Date().toLocaleString('da-DK');
+          const serviceCompletion = {
+            date: new Date().toLocaleDateString('da-DK'),
+            employee: employee.name,
+            employeeId: employee.id,
+            notes: completionNotes,
+            type: 'service_completed',
+            stamp: `${employee.name} - ${employee.id} - ${timestamp}`
+          };
+          
+          updateFacility(facility.id, {
+            status: 'active',
+            serviceNote: '',
+            lastService: new Date().toLocaleDateString('da-DK'),
+            lastServiceBy: employee.name,
+            lastServiceStamp: serviceCompletion.stamp,
+            serviceHistory: [serviceCompletion, ...(facility.serviceHistory || [])]
+          });
+          
+          alert(`Service afsluttet af ${employee.name} - anlæg er nu aktivt igen\n\nUdført arbejde: ${completionNotes}`);
+        });
+      }
+    });
+    setShowNoteModal(true);
+  };
+
+  // Render order actions based on status - MOBILE OPTIMIZED
+  const renderOrderActions = (order) => {
+    const daysOverdue = selectedCategory === 'forsinket' ? getDaysOverdue(order.rentalEndDate) : 0;
+
+    if (order.status === 'pending') {
+      return (
+        <div className="space-y-3">
+          <button
+            onClick={() => startOrderPicking(order)}
+            className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-4 py-3 rounded-xl font-semibold text-base"
+          >
+            Start Plukning
+          </button>
+
+          {selectedOrder && selectedOrder.id === order.id && showFacilityDropdown && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+              <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                <div className="p-4 border-b bg-blue-50">
+                  <h4 className="font-semibold text-blue-900 text-lg">Pluk Ordre {order.orderNumber}</h4>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-4">
+                  <div className="mb-4">
+                    <h5 className="font-semibold mb-3 text-sm">Pluk antal:</h5>
+                    <div className="space-y-2">
+                      {order.items.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg border">
+                          <span className="flex-1 text-sm truncate mr-2">{item.name}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => updatePickingQuantity(item.id, (pickingQuantities[item.id] || 0) - 1)}
+                              className="bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center"
+                            >
+                              <Minus className="w-5 h-5" />
+                            </button>
+                            <span className="w-12 text-center font-bold text-sm">
+                              {pickingQuantities[item.id] || 0}/{item.quantity}
+                            </span>
+                            <button
+                              onClick={() => updatePickingQuantity(item.id, Math.min((pickingQuantities[item.id] || 0) + 1, item.quantity))}
+                              className="bg-green-500 text-white w-10 h-10 rounded-full flex items-center justify-center"
+                            >
+                              <Plus className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="mb-4">
+                    <h5 className="font-semibold mb-3 text-sm">Vælg anlæg:</h5>
+                    <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto p-1">
+                      {getAvailableFacilities().map((facility) => {
+                        const isSelected = selectedFacilities.some(f => f.id === facility.id);
+                        return (
+                          <button
+                            key={facility.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedFacilities(prev => prev.filter(f => f.id !== facility.id));
+                              } else {
+                                setSelectedFacilities(prev => [...prev, facility]);
+                              }
+                            }}
+                            className={`p-3 rounded-lg border-2 transition-all text-xs ${
+                              isSelected 
+                                ? 'bg-green-500 border-green-600 text-white shadow-lg scale-105' 
+                                : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50'
+                            }`}
+                          >
+                            <div className="font-bold text-base mb-1">{facility.id}</div>
+                            <div className="opacity-90">
+                              {facility.name.includes('1 haners') ? '1 haner' : '2 haner'}
+                            </div>
+                            {isSelected && (
+                              <div className="mt-2">
+                                <span className="inline-block bg-white text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">
+                                  ✓ Valgt
+                                </span>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-2 text-xs text-gray-600 text-center">
+                      {selectedFacilities.length > 0 
+                        ? `${selectedFacilities.length} anlæg valgt` 
+                        : 'Tryk på et anlæg for at vælge'}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-4 border-t bg-gray-50 flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowFacilityDropdown(false);
+                      setSelectedOrder(null);
+                      setSelectedFacilities([]);
+                      setPickingQuantities({});
+                    }}
+                    className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-3 rounded-lg font-semibold"
+                  >
+                    Annuller
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (selectedFacilities.length === 0) {
+                        alert('Vælg mindst ét anlæg');
+                        return;
+                      }
+                      setShowFacilityDropdown(false);
+                      completeOrderPacking(selectedOrder.id, selectedFacilities);
+                    }}
+                    disabled={selectedFacilities.length === 0}
+                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-3 rounded-lg font-semibold"
+                  >
+                    Færdiggør ({selectedFacilities.length})
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (order.status === 'packed') {
+      return (
+        <div className="space-y-3">
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+            <p className="text-green-800 font-semibold text-sm">Pakket af: {order.packedBy}</p>
+            {order.assignedFacilities && order.assignedFacilities.length > 0 && (
+              <p className="text-green-700 text-xs">Anlæg nr.: {order.assignedFacilities.join(', ')}</p>
+            )}
+            <p className="text-green-700 text-xs">Dato: {order.packedDate}</p>
+            <p className="text-green-700 text-xs">Tid: {order.packedTime}</p>
+            {order.packingNotes && (
+              <p className="text-green-700 text-xs mt-2">
+                <strong>Bemærkninger:</strong> {order.packingNotes}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() => startSignature(order)}
+            className="w-full bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white px-4 py-3 rounded-lg font-semibold"
+          >
+            Underskrift
+          </button>
+        </div>
+      );
+    }
+
+    if (order.status === 'shipped' || daysOverdue > 0) {
+      return (
+        <div className="space-y-3">
+          {daysOverdue > 0 && (
+            <div className="bg-red-50 border-2 border-red-400 rounded-xl p-3">
+              <p className="text-red-800 font-bold text-base">⚠️ FORSINKET</p>
+              <p className="text-red-700 text-sm">{daysOverdue} {daysOverdue === 1 ? 'dag' : 'dage'} forsinket!</p>
+              <p className="text-red-600 text-xs">Kontakt kunden omgående</p>
+            </div>
+          )}
+          
+          {/* Pakke information */}
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+            <p className="text-green-800 font-semibold text-sm">Pakket af: {order.packedBy}</p>
+            {order.assignedFacilities && order.assignedFacilities.length > 0 && (
+              <p className="text-green-700 text-xs">Anlæg nr.: {order.assignedFacilities.join(', ')}</p>
+            )}
+            <p className="text-green-700 text-xs">Pakke dato: {order.packedDate || order.deliveryDate}</p>
+            <p className="text-green-700 text-xs">Pakke tid: {order.packedTime || 'Ikke registreret'}</p>
+            {order.packingNotes && (
+              <p className="text-green-700 text-xs mt-2">
+                <strong>Pakke bemærkninger:</strong> {order.packingNotes}
+              </p>
+            )}
+            {order.packingStamp && (
+              <div className="mt-2 pt-2 border-t border-green-300">
+                <p className="text-xs text-green-600 font-mono break-all">Pakke stempel: {order.packingStamp}</p>
+              </div>
+            )}
+          </div>
+          
+          {/* Leverings information */}
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+            <p className="text-orange-800 font-semibold text-sm">Udleveret af: {order.shippedBy}</p>
+            {order.assignedFacilities && order.assignedFacilities.length > 0 && (
+              <p className="text-orange-700 text-xs">Anlæg nr.: {order.assignedFacilities.join(', ')}</p>
+            )}
+            <p className="text-orange-700 text-xs">Dato: {order.shippedDate || 'Ikke registreret'}</p>
+            <p className="text-orange-700 text-xs">Tid: {order.shippedTime || 'Ikke registreret'}</p>
+            {order.shippingNotes && (
+              <p className="text-orange-700 text-xs mt-2">
+                <strong>Leverings bemærkninger:</strong> {order.shippingNotes}
+              </p>
+            )}
+            {order.shippingStamp && (
+              <div className="mt-2 pt-2 border-t border-orange-300">
+                <p className="text-xs text-orange-600 font-mono break-all">Leverings stempel: {order.shippingStamp}</p>
+              </div>
+            )}
+          </div>
+          
+          {/* Kunde underskrift hvis eksisterer */}
+          {order.customerSignature && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
+              <p className="text-purple-800 font-semibold text-sm mb-2">Kunde underskrift modtaget</p>
+              <img src={order.customerSignature} alt="Kunde underskrift" className="max-w-full h-16 border rounded bg-white" />
+              {order.deliveryStamp && (
+                <div className="mt-2 pt-2 border-t border-purple-300">
+                  <p className="text-xs text-purple-600 font-mono break-all">Underskrift stempel: {order.deliveryStamp}</p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Generelle noter */}
+          {order.notes && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <p className="text-gray-800 font-semibold text-sm mb-1">Noter:</p>
+              <p className="text-gray-700 text-xs whitespace-pre-wrap">{order.notes}</p>
+            </div>
+          )}
+          
+          <button
+            onClick={() => handleReturnOrder(order)}
+            className={`w-full ${daysOverdue > 0 ? 'bg-red-600 hover:bg-red-700 active:bg-red-800' : 'bg-purple-600 hover:bg-purple-700 active:bg-purple-800'} text-white px-4 py-3 rounded-lg font-semibold`}
+          >
+            {daysOverdue > 0 ? 'REGISTRER FORSINKET RETUR' : 'Registrer Retur'}
+          </button>
+        </div>
+      );
+    }
+
+    if (order.status === 'returned') {
+      return (
+        <div className={`${order.wasOverdue ? 'bg-red-50 border-red-200' : 'bg-purple-50 border-purple-200'} border rounded-xl p-3`}>
+          <div className="flex justify-between items-start mb-2">
+            <p className={`${order.wasOverdue ? 'text-red-800' : 'text-purple-800'} font-semibold text-sm`}>
+              Ordre afsluttet som retur
+            </p>
+            {order.wasOverdue && (
+              <span className="bg-red-600 text-white px-2 py-0.5 rounded-full text-xs font-bold">
+                {order.daysOverdue} {order.daysOverdue === 1 ? 'DAG' : 'DAGE'} FOR SENT
+              </span>
+            )}
+          </div>
+          
+          {/* Retur information */}
+          {order.returnedBy && (
+            <div className="mb-2">
+              <p className={`${order.wasOverdue ? 'text-red-700' : 'text-purple-700'} text-xs font-semibold`}>
+                Retur håndteret af: {order.returnedBy}
+              </p>
+            </div>
+          )}
+          
+          {/* Fustage information */}
+          {(order.emptyKegs !== undefined || order.fullKegs !== undefined) && (
+            <div className={`${order.wasOverdue ? 'text-red-700' : 'text-purple-700'} text-xs mt-2 p-2 bg-white rounded`}>
+              <p className="font-semibold mb-1">Returnerede fustager:</p>
+              <p>Tomme fustager: {order.emptyKegs || 0}</p>
+              <p>Fyldte fustager: {order.fullKegs || 0}</p>
+              <p className="font-bold mt-1 pt-1 border-t">Total fustager: {(order.emptyKegs || 0) + (order.fullKegs || 0)}</p>
+            </div>
+          )}
+          
+          {/* Drypbakke status */}
+          {order.drypbakkeReceived && (
+            <p className="text-green-700 text-xs font-medium mt-2">✓ Drypbakke modtaget</p>
+          )}
+          
+          {/* Retur noter */}
+          {order.returnNotes && (
+            <div className={`${order.wasOverdue ? 'text-red-600' : 'text-purple-600'} text-xs mt-2 p-2 bg-white rounded`}>
+              <p className="font-semibold">Retur årsag/bemærkninger:</p>
+              <p className="mt-1">{order.returnNotes}</p>
+            </div>
+          )}
+          
+          {/* Forsinket advarsel */}
+          {order.wasOverdue && (
+            <div className="mt-3 p-2 bg-red-100 rounded-lg border border-red-300">
+              <p className="text-red-800 text-xs font-bold">
+                ⚠️ Denne ordre blev returneret {order.daysOverdue} {order.daysOverdue === 1 ? 'dag' : 'dage'} efter aftalt slutdato
+              </p>
+            </div>
+          )}
+          
+          {/* Kunde underskrift */}
+          {order.customerSignature && (
+            <div className="mt-2 p-2 bg-white rounded">
+              <p className="text-xs font-semibold mb-1">Kunde underskrift:</p>
+              <img src={order.customerSignature} alt="Kunde underskrift" className="max-w-full h-16 border rounded bg-white" />
+            </div>
+          )}
+          
+          {/* Retur stempel */}
+          {order.returnStamp && (
+            <div className="mt-2 pt-2 border-t">
+              <p className="text-xs text-gray-600 font-mono break-all">
+                Retur stempel: {order.returnStamp}
+              </p>
+            </div>
+          )}
+          
+          {/* Alle noter samlet */}
+          {order.notes && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-semibold text-gray-700">Se alle noter ▼</summary>
+              <div className="mt-1 p-2 bg-white rounded text-xs text-gray-600 whitespace-pre-wrap">
+                {order.notes}
+              </div>
+            </details>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* MAIN VIEW - MOBILE OPTIMIZED */}
+      {currentView === 'main' && (
+        <div className="pb-safe">
+          <div className="bg-white shadow-sm border-b p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="bg-gradient-to-r from-orange-400 to-orange-600 p-2 sm:p-3 rounded-xl">
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-white rounded-lg flex items-center justify-center">
+                    <span className="text-orange-600 font-bold text-sm sm:text-lg">BK</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-600">Braunstein Keg Rental</p>
+                  <p className="font-semibold text-base sm:text-lg">System v4.0.0</p>
+                </div>
+              </div>
+              
+              </div>
+            </div>
+            
+            <h1 className="text-xl sm:text-3xl font-bold text-center mt-3 mb-1">Braunstein Keg Rental</h1>
+            
+            {/* STATISTICS BAR WITH SHOPIFY - MOBILE OPTIMIZED */}
+            <div className="mt-3 mx-2 bg-gradient-to-r from-blue-50 to-green-50 border border-gray-200 rounded-lg p-2">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="bg-blue-100 p-1.5 rounded">
+                    <Package className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600">Kommende</p>
+                    <p className="text-lg font-bold text-blue-600 -mt-1">
+                      {(() => {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+                        
+                        const upcomingRentals = orders.filter(order => {
+                          if (order.status === 'returned') return false;
+                          
+                          const parts = order.rentalStartDate.split('.');
+                          if (parts.length !== 3) return false;
+                          
+                          const day = parseInt(parts[0]);
+                          const month = parseInt(parts[1]) - 1;
+                          const year = parseInt(parts[2]);
+                          
+                          const startDate = new Date(year, month, day);
+                          startDate.setHours(0, 0, 0, 0);
+                          
+                          return startDate >= today && startDate <= nextWeek;
+                        });
+                        
+                        return upcomingRentals.length;
+                      })()}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="w-px h-10 bg-gray-300"></div>
+                
+                <div className="flex items-center gap-2">
+                  <div className="bg-green-100 p-1.5 rounded">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600">Ledige</p>
+                    <p className="text-lg font-bold text-green-600 -mt-1">
+                      {(() => {
+                        const activeFacilities = facilities.filter(f => f.status === 'active');
+                        const totalActive = activeFacilities.length;
+                        
+                        const assignedFacilityIds = new Set();
+                        orders.forEach(order => {
+                          if (order.status === 'packed' || order.status === 'shipped') {
+                            (order.assignedFacilities || []).forEach(id => assignedFacilityIds.add(id));
+                          }
+                        });
+                        
+                        const available = totalActive - assignedFacilityIds.size;
+                        
+                        return `${Math.max(0, available)}/${totalActive}`;
+                      })()}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="w-px h-10 bg-gray-300"></div>
+                
+                <button 
+                  onClick={fetchShopifyOrders}
+                  disabled={isLoadingShopify}
+                  className="bg-green-500 hover:bg-green-600 active:bg-green-700 disabled:bg-gray-400 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingShopify ? 'animate-spin' : ''}`} />
+                  <span className="ml-1">{isLoadingShopify ? 'Henter' : 'Shopify'}</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* NEW ORDER NOTIFICATION */}
+            {categoryStats['nye'] > 0 && (
+              <div className="mt-3 mx-4 bg-blue-500 text-white rounded-lg p-3 flex items-center justify-center animate-pulse">
+                <Bell className="w-5 h-5 mr-2" />
+                <span className="font-semibold">{categoryStats['nye']} ny{categoryStats['nye'] > 1 ? 'e' : ''} ordre venter!</span>
+              </div>
+            )}
+            
+            {/* SEARCH BAR */}
+            <div className="mt-4 px-2">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Søg ordre nr. eller kunde navn..."
+                  className="w-full px-4 py-3 pl-10 pr-10 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-sm sm:text-base"
+                />
+                <svg className="absolute left-3 top-3.5 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                )}
+              </div>
+              
+              {/* SEARCH RESULTS */}
+              {searchTerm && (
+                <div className="mt-3 bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
+                  {(() => {
+                    const filteredOrders = orders.filter(order => 
+                      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      order.customer.toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                    
+                    if (filteredOrders.length === 0) {
+                      return (
+                        <div className="p-4 text-center text-gray-500">
+                          Ingen ordre fundet
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div className="max-h-64 overflow-y-auto">
+                        {filteredOrders.map(order => (
+                          <div
+                            key={order.id}
+                            onClick={() => {
+                              // Find which category this order belongs to
+                              let targetCategory = '';
+                              if (order.status === 'pending') targetCategory = 'nye';
+                              else if (order.status === 'packed') targetCategory = 'udlevering';
+                              else if (order.status === 'shipped') {
+                                // Check if overdue
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const dateParts = order.rentalEndDate.split('.');
+                                const endDate = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
+                                endDate.setHours(0, 0, 0, 0);
+                                const isOverdue = endDate < today;
+                                targetCategory = isOverdue ? 'forsinket' : 'modtag_retur';
+                              }
+                              else if (order.status === 'returned') targetCategory = 'retur';
+                              
+                              if (targetCategory) {
+                                setSelectedCategory(targetCategory);
+                                setCurrentView('orders');
+                                setSearchTerm('');
+                              }
+                            }}
+                            className="p-3 border-b hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm">{order.orderNumber}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                    order.status === 'pending' ? 'bg-blue-100 text-blue-800' :
+                                    order.status === 'packed' ? 'bg-green-100 text-green-800' :
+                                    order.status === 'shipped' ? 'bg-orange-100 text-orange-800' :
+                                    'bg-purple-100 text-purple-800'
+                                  }`}>
+                                    {order.status === 'pending' ? 'Ny' :
+                                     order.status === 'packed' ? 'Pakket' :
+                                     order.status === 'shipped' ? 'Udleveret' :
+                                     'Returneret'}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-700 mt-1">{order.customer}</p>
+                                <p className="text-xs text-gray-500">Start: {order.rentalStartDate}</p>
+                              </div>
+                              <svg className="w-5 h-5 text-gray-400 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-6">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 max-w-lg mx-auto">
+              {categories.map((category) => {
+                const IconComponent = category.icon;
+                const colors = getColorClasses(category.color);
+                const count = categoryStats[category.id];
+                
+                return (
+                  <div
+                    key={category.id}
+                    onClick={() => navigateToCategory(category)}
+                    className="bg-white border-2 border-gray-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 cursor-pointer hover:shadow-xl active:scale-95 transition-all touch-manipulation"
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <div className={`${colors.bg} p-3 sm:p-4 rounded-full mb-3 sm:mb-4`}>
+                        <IconComponent className={`w-6 h-6 sm:w-8 sm:h-8 ${colors.text}`} />
+                      </div>
+                      <h3 className="text-sm sm:text-lg font-bold text-gray-900 mb-1 sm:mb-2">{category.title}</h3>
+                      <p className="text-xs text-gray-600 mb-2 sm:mb-3 hidden sm:block">{category.subtitle}</p>
+                      <div className={`${colors.button} text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-full font-bold text-xs sm:text-sm`}>
+                        {count} ordre{count !== 1 ? 'r' : ''}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {/* ADMIN BUTTON */}
+              <div
+                onClick={() => navigateToAdmin()}
+                className="bg-white border-2 border-gray-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 cursor-pointer hover:shadow-xl active:scale-95 transition-all touch-manipulation"
+              >
+                <div className="flex flex-col items-center text-center">
+                  <div className="bg-gray-50 p-3 sm:p-4 rounded-full mb-3 sm:mb-4">
+                    <Settings className="w-6 h-6 sm:w-8 sm:h-8 text-gray-600" />
+                  </div>
+                  <h3 className="text-sm sm:text-lg font-bold text-gray-900 mb-1 sm:mb-2">Admin</h3>
+                  <p className="text-xs text-gray-600 mb-2 sm:mb-3 hidden sm:block">Anlæg administration</p>
+                  <div className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-full font-bold text-xs sm:text-sm">
+                    {facilities.length} anlæg
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ORDERS VIEW - MOBILE OPTIMIZED */}
+      {currentView === 'orders' && (
+        <div className="pb-safe">
+          <div className="sticky top-0 bg-white shadow-sm border-b p-4 z-10">
+            <button onClick={navigateToMain} className="text-blue-600 hover:text-blue-800 text-sm mb-2">
+              ← Tilbage til hovedmenu
+            </button>
+            <h1 className="text-lg sm:text-2xl font-bold">{categories.find(c => c.id === selectedCategory)?.title}</h1>
+            <p className="text-gray-600 text-xs sm:text-sm mt-1">{categories.find(c => c.id === selectedCategory)?.subtitle}</p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {getOrdersByStatus(categories.find(c => c.id === selectedCategory)?.status).map((order) => {
+              const daysOverdue = selectedCategory === 'forsinket' ? getDaysOverdue(order.rentalEndDate) : 0;
+              
+              return (
+                <div key={order.id} className={`bg-white rounded-xl shadow-lg p-4 border-2 ${daysOverdue > 0 ? 'border-red-500' : 'border-gray-200'}`}>
+                  
+                  {/* ORDRE HEADER - MOBILE */}
+                  <div className="border-b border-gray-200 pb-3 mb-3">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1 flex-1">
+                        <h2 className="text-lg sm:text-2xl font-bold text-gray-900">{order.orderNumber}</h2>
+                        <h3 className="text-sm sm:text-lg font-semibold text-gray-700 truncate">{order.customer}</h3>
+                        
+                        <div className="space-y-1 text-xs sm:text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">Telefon:</span>
+                            <span className="text-blue-600">{order.customerPhone}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">Start:</span>
+                            <span>{order.rentalStartDate}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">Slut:</span>
+                            <span className={daysOverdue > 0 ? 'text-red-600 font-bold' : ''}>{order.rentalEndDate}</span>
+                          </div>
+                          {daysOverdue > 0 && (
+                            <div className="mt-2">
+                              <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-bold">
+                                {daysOverdue} {daysOverdue === 1 ? 'dag' : 'dage'} forsinket!
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <p className="text-xs sm:text-sm text-gray-600">{order.totalItems} varer</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* VARER - MOBILE */}
+                  <div className="mb-4">
+                    <h4 className="font-bold text-sm sm:text-lg mb-2">Ordre indhold:</h4>
+                    <div className="space-y-2">
+                      {order.items.map((item) => (
+                        <div key={item.id} className="flex justify-between items-center p-2 sm:p-3 bg-gray-50 rounded-lg border">
+                          <span className="font-medium text-xs sm:text-sm truncate mr-2">{item.name}</span>
+                          <span className="font-bold text-sm sm:text-lg whitespace-nowrap">
+                            {item.picked !== undefined ? `${item.picked}/${item.quantity}` : `${item.quantity} stk`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* HANDLINGER - MOBILE */}
+                  {renderOrderActions(order)}
+                </div>
+              );
+            })}
+
+            {getOrdersByStatus(categories.find(c => c.id === selectedCategory)?.status).length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-gray-500 text-base">Ingen ordre i denne kategori</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN VIEW - MOBILE OPTIMIZED */}
+      {currentView === 'admin' && (
+        <div className="pb-safe">
+          <div className="sticky top-0 bg-white shadow-sm border-b p-4 z-10">
+            <button onClick={navigateToMain} className="text-blue-600 hover:text-blue-800 text-sm mb-2">
+              ← Tilbage til hovedmenu
+            </button>
+            <h1 className="text-lg sm:text-2xl font-bold">Anlæg Administration</h1>
+            <p className="text-gray-600 text-xs sm:text-sm mt-1">Administrer fadølsanlæg og service</p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {facilities.map((facility) => {
+              const daysSinceLastCleaning = facility.lastCleaned ? 
+                Math.floor((new Date() - new Date(facility.lastCleaned.split('.').reverse().join('-'))) / (1000 * 60 * 60 * 24)) : null;
+              const isCleaningOverdue = daysSinceLastCleaning !== null && daysSinceLastCleaning > 14;
+              
+              return (
+                <div key={facility.id} className="bg-white rounded-xl shadow-lg p-4 border">
+                  <h3 className="text-base sm:text-xl font-bold text-gray-900 mb-3">{facility.name}</h3>
+                  
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      facility.status === 'active' ? 'bg-green-100 text-green-800' :
+                      facility.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {facility.status === 'active' ? 'AKTIV' :
+                       facility.status === 'maintenance' ? 'UNDER SERVICE' : 'INAKTIV'}
+                    </span>
+                    
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                      Udlejninger: {facility.totalRentals || 0}
+                    </span>
+                    
+                    {isCleaningOverdue && (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">
+                        KRÆVER RENSNING
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="p-2 rounded-lg bg-blue-50 border text-center">
+                      <p className="text-xs font-bold text-blue-600">Sidste Service</p>
+                      <p className="text-sm font-bold text-blue-900">{facility.lastService}</p>
+                      {facility.lastServiceBy && (
+                        <p className="text-xs text-blue-700 mt-1">Af: {facility.lastServiceBy}</p>
+                      )}
+                    </div>
+                    <div className="p-2 rounded-lg bg-green-50 border text-center">
+                      <p className="text-xs font-bold text-green-600">Sidste Rensning</p>
+                      <p className="text-sm font-bold text-green-900">{facility.lastCleaned}</p>
+                      {daysSinceLastCleaning !== null && (
+                        <p className={`text-xs ${isCleaningOverdue ? 'text-red-600 font-bold' : 'text-gray-600'}`}>
+                          ({daysSinceLastCleaning} dage siden)
+                        </p>
+                      )}
+                      {facility.lastCleanedBy && (
+                        <p className="text-xs text-green-700">Af: {facility.lastCleanedBy}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {facility.serviceNote && (
+                    <div className="mb-3 p-3 rounded-lg bg-yellow-50 border-yellow-200 border">
+                      <h4 className="font-bold text-sm text-yellow-800 mb-1">Service Bemærkninger</h4>
+                      <p className="text-xs text-yellow-700">{facility.serviceNote}</p>
+                    </div>
+                  )}
+
+                  {/* Historik sektion */}
+                  <details className="group mb-3">
+                    <summary className="cursor-pointer font-semibold text-sm text-gray-700 hover:text-gray-900 mb-2">
+                      Se historik ▼
+                    </summary>
+                    <div className="space-y-2 max-h-48 overflow-y-auto p-2 bg-gray-50 rounded-lg">
+                      {/* Rensnings historik */}
+                      {facility.cleaningHistory && facility.cleaningHistory.length > 0 && (
+                        <div>
+                          <h5 className="font-semibold text-xs text-gray-600 mb-2">Rensnings historik:</h5>
+                          {facility.cleaningHistory.slice(0, 3).map((cleaning, index) => (
+                            <div key={index} className="bg-white p-2 rounded text-xs mb-1 border">
+                              <div className="flex justify-between">
+                                <span className="font-medium">{cleaning.date}</span>
+                                <span className="text-gray-600">{cleaning.employee}</span>
+                              </div>
+                              {cleaning.notes && (
+                                <p className="text-gray-600 mt-1">Bemærkning: {cleaning.notes}</p>
+                              )}
+                              {cleaning.stamp && (
+                                <p className="text-xs text-gray-500 font-mono mt-1 pt-1 border-t">
+                                  Stempel: {cleaning.stamp}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Service historik */}
+                      {facility.serviceHistory && facility.serviceHistory.length > 0 && (
+                        <div>
+                          <h5 className="font-semibold text-xs text-gray-600 mb-2">Service historik:</h5>
+                          {facility.serviceHistory.slice(0, 3).map((service, index) => (
+                            <div key={index} className="bg-blue-50 p-2 rounded text-xs mb-1 border border-blue-200">
+                              <div className="flex justify-between">
+                                <span className="font-medium">{service.date}</span>
+                                <span className="text-blue-600">{service.employee}</span>
+                              </div>
+                              <p className="text-blue-700 mt-1">
+                                Type: {service.type === 'service_completed' ? 'Service afsluttet' : 'Service påbegyndt'}
+                              </p>
+                              {service.notes && (
+                                <p className="text-blue-600 mt-1">Bemærkning: {service.notes}</p>
+                              )}
+                              {service.stamp && (
+                                <p className="text-xs text-blue-500 font-mono mt-1 pt-1 border-t border-blue-200">
+                                  Stempel: {service.stamp}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+
+                  {/* Stempler sektion */}
+                  {(facility.lastCleaningStamp || facility.lastServiceStamp) && (
+                    <details className="group mb-3">
+                      <summary className="cursor-pointer font-semibold text-sm text-gray-700 hover:text-gray-900 mb-2">
+                        Seneste stempler ▼
+                      </summary>
+                      <div className="p-3 bg-gray-50 rounded-lg border">
+                        {facility.lastCleaningStamp && (
+                          <div className="mb-2">
+                            <p className="text-xs text-gray-500">Rensning:</p>
+                            <p className="text-xs font-mono text-green-600 break-all">{facility.lastCleaningStamp}</p>
+                          </div>
+                        )}
+                        {facility.lastServiceStamp && (
+                          <div>
+                            <p className="text-xs text-gray-500">Service:</p>
+                            <p className="text-xs font-mono text-blue-600 break-all">{facility.lastServiceStamp}</p>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <button 
+                      onClick={() => registerCleaning(facility)}
+                      className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-2 py-2 rounded-lg font-semibold text-xs"
+                    >
+                      Rensning
+                    </button>
+                    
+                    <button 
+                      onClick={() => {
+                        if (facility.status === 'active') {
+                          registerService(facility);
+                        } else {
+                          const newStatus = 'active';
+                          updateFacility(facility.id, {
+                            status: newStatus,
+                            serviceNote: ''
+                          });
+                          alert(`Status ændret til: AKTIV`);
+                        }
+                      }}
+                      className="bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white px-2 py-2 rounded-lg font-semibold text-xs"
+                    >
+                      {facility.status === 'active' ? 'Start Service' : 'Sæt Aktiv'}
+                    </button>
+
+                    {facility.status === 'maintenance' && (
+                      <button 
+                        onClick={() => completeService(facility)}
+                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-2 py-2 rounded-lg font-semibold text-xs"
+                      >
+                        Afslut Service
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* EDIT ORDER MODAL - MOBILE OPTIMIZED */}
+      {showEditModal && editingOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 sm:p-6 border-b">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg sm:text-xl font-bold">Rediger Ordre {editingOrder.orderNumber}</h3>
+                <button 
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingOrder(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Kunde navn</label>
+                  <input
+                    type="text"
+                    value={editingOrder.customer}
+                    onChange={(e) => setEditingOrder({...editingOrder, customer: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="Indtast kunde navn"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Telefon</label>
+                  <input
+                    type="text"
+                    value={editingOrder.customerPhone}
+                    onChange={(e) => setEditingOrder({...editingOrder, customerPhone: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="+45 XX XX XX XX"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Leveringsdato</label>
+                  <input
+                    type="text"
+                    value={editingOrder.deliveryDate}
+                    onChange={(e) => setEditingOrder({...editingOrder, deliveryDate: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="DD.MM.YYYY"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Lejeperiode start</label>
+                  <input
+                    type="text"
+                    value={editingOrder.rentalStartDate}
+                    onChange={(e) => setEditingOrder({...editingOrder, rentalStartDate: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="DD.MM.YYYY"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Lejeperiode slut</label>
+                  <input
+                    type="text"
+                    value={editingOrder.rentalEndDate}
+                    onChange={(e) => setEditingOrder({...editingOrder, rentalEndDate: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="DD.MM.YYYY"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Prioritet</label>
+                  <select
+                    value={editingOrder.priority}
+                    onChange={(e) => setEditingOrder({...editingOrder, priority: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="høj">Høj</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Varer</label>
+                  <div className="space-y-2">
+                    {editingOrder.items && editingOrder.items.map((item, index) => (
+                      <div key={item.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => {
+                            const newItems = [...editingOrder.items];
+                            newItems[index].name = e.target.value;
+                            setEditingOrder({...editingOrder, items: newItems});
+                          }}
+                          className="flex-1 border rounded px-2 py-1 text-sm"
+                          placeholder="Vare navn"
+                        />
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const newItems = [...editingOrder.items];
+                            newItems[index].quantity = parseInt(e.target.value) || 0;
+                            setEditingOrder({...editingOrder, items: newItems, totalItems: newItems.reduce((sum, i) => sum + i.quantity, 0)});
+                          }}
+                          className="w-16 border rounded px-2 py-1 text-sm text-center"
+                          min="0"
+                        />
+                        <button
+                          onClick={() => {
+                            const newItems = editingOrder.items.filter((_, i) => i !== index);
+                            setEditingOrder({...editingOrder, items: newItems, totalItems: newItems.reduce((sum, i) => sum + i.quantity, 0)});
+                          }}
+                          className="bg-red-500 text-white p-1 rounded hover:bg-red-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      const newItem = { 
+                        id: 'item_' + Date.now(), 
+                        name: '', 
+                        quantity: 1, 
+                        picked: 0 
+                      };
+                      const newItems = [...(editingOrder.items || []), newItem];
+                      setEditingOrder({
+                        ...editingOrder, 
+                        items: newItems,
+                        totalItems: newItems.reduce((sum, i) => sum + i.quantity, 0)
+                      });
+                    }}
+                    className="mt-2 bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                  >
+                    + Tilføj vare
+                  </button>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Noter</label>
+                  <textarea
+                    value={editingOrder.notes}
+                    onChange={(e) => setEditingOrder({...editingOrder, notes: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    rows="3"
+                    placeholder="Eventuelle bemærkninger..."
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 sm:p-6 border-t bg-gray-50 flex gap-3">
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingOrder(null);
+                }}
+                className="flex-1 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-800 py-3 rounded-xl font-semibold"
+              >
+                Annuller
+              </button>
+              <button
+                onClick={() => {
+                  setOrders(orders.map(o => 
+                    o.id === editingOrder.id ? editingOrder : o
+                  ));
+                  setShowEditModal(false);
+                  setEditingOrder(null);
+                  alert('Ordre opdateret!');
+                }}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-3 rounded-xl font-semibold"
+              >
+                Gem ændringer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EMPLOYEE MODAL - MOBILE OPTIMIZED */}
+      {showEmployeeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-[60]">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl max-h-[70vh] sm:max-h-auto">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900">{employeeModalConfig.title}</h3>
+                <button 
+                  onClick={() => {
+                    setShowEmployeeModal(false);
+                    setEmployeeModalConfig({ title: '', callback: null });
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 sm:p-6 overflow-y-auto">
+              <div className="space-y-2 sm:space-y-3">
+                {employees.map((employee) => (
+                  <button
+                    key={employee.id}
+                    onClick={() => selectEmployee(employee)}
+                    className="w-full p-3 sm:p-4 bg-gray-50 hover:bg-blue-50 active:bg-blue-100 rounded-xl border-2 border-gray-200 hover:border-blue-300 transition-all flex items-center gap-3"
+                  >
+                    <div className="bg-blue-100 p-2 rounded-full">
+                      <User className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-900 text-sm sm:text-base">{employee.name}</p>
+                      <p className="text-xs text-gray-500">{employee.id}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RETURN MODAL - MOBILE OPTIMIZED */}
+      {showReturnModal && returnOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900">Registrer Retur - {returnOrder.orderNumber}</h3>
+                <button onClick={() => { 
+                  setShowReturnModal(false); 
+                  setReturnOrder(null); 
+                  setEmptyKegs(0); 
+                  setFullKegs(0); 
+                  setReturnNotes(''); 
+                  setDrypbakkeReceived(false); 
+                }}>
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm sm:text-lg font-semibold text-gray-700 mb-3">Tomme Fustager</label>
+                  <div className="flex items-center justify-center gap-4">
+                    <button 
+                      onClick={() => setEmptyKegs(Math.max(0, emptyKegs - 1))} 
+                      className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                    >
+                      <Minus className="w-6 h-6" />
+                    </button>
+                    <span className="text-2xl font-bold text-gray-900 w-16 text-center bg-gray-50 p-2 rounded-lg border-2">{emptyKegs}</span>
+                    <button 
+                      onClick={() => setEmptyKegs(emptyKegs + 1)} 
+                      className="bg-green-500 hover:bg-green-600 active:bg-green-700 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                    >
+                      <Plus className="w-6 h-6" />
+                    </button>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm sm:text-lg font-semibold text-gray-700 mb-3">Fyldte Fustager</label>
+                  <div className="flex items-center justify-center gap-4">
+                    <button 
+                      onClick={() => setFullKegs(Math.max(0, fullKegs - 1))} 
+                      className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                    >
+                      <Minus className="w-6 h-6" />
+                    </button>
+                    <span className="text-2xl font-bold text-gray-900 w-16 text-center bg-gray-50 p-2 rounded-lg border-2">{fullKegs}</span>
+                    <button 
+                      onClick={() => setFullKegs(fullKegs + 1)} 
+                      className="bg-green-500 hover:bg-green-600 active:bg-green-700 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                    >
+                      <Plus className="w-6 h-6" />
+                    </button>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm sm:text-lg font-semibold text-gray-700 mb-3">Retur Bemærkninger</label>
+                  <textarea 
+                    value={returnNotes} 
+                    onChange={(e) => setReturnNotes(e.target.value)} 
+                    className="w-full border-2 border-gray-300 rounded-xl px-3 py-2 text-sm sm:text-base focus:border-purple-500 focus:outline-none" 
+                    rows="3" 
+                    placeholder="Årsag til retur, skader, mangler osv..." 
+                  />
+                </div>
+                
+                <div>
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <div className="relative">
+                      <input 
+                        type="checkbox" 
+                        checked={drypbakkeReceived} 
+                        onChange={(e) => setDrypbakkeReceived(e.target.checked)} 
+                        className="sr-only" 
+                      />
+                      <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${drypbakkeReceived ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'}`}>
+                        {drypbakkeReceived && (
+                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-sm sm:text-lg font-semibold text-gray-700">Modtagelse af drypbakke</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 sm:p-6 border-t border-gray-200 flex gap-3">
+              <button 
+                onClick={() => { 
+                  setShowReturnModal(false); 
+                  setReturnOrder(null); 
+                  setEmptyKegs(0); 
+                  setFullKegs(0); 
+                  setReturnNotes(''); 
+                  setDrypbakkeReceived(false); 
+                }} 
+                className="flex-1 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-700 py-3 rounded-xl font-semibold text-sm sm:text-lg"
+              >
+                Annuller
+              </button>
+              <button 
+                onClick={completeReturn} 
+                className="flex-1 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white py-3 rounded-xl font-semibold text-sm sm:text-lg shadow-lg"
+              >
+                Godkend Retur
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SIGNATURE MODAL - MOBILE OPTIMIZED */}
+      {showSignatureModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl">
+            <div className="p-4 sm:p-6 border-b">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg sm:text-xl font-bold">Kunde Underskrift</h3>
+                <button onClick={() => {
+                  setShowSignatureModal(false);
+                  setSelectedOrder(null);
+                  setCustomerName('');
+                  setSignaturePaths([]);
+                }}>
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-4 sm:p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Kunde navn:</label>
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="w-full p-3 border rounded-lg text-sm"
+                  placeholder="Indtast kunde navn"
+                />
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Bemærkninger til udlevering:</label>
+                <textarea
+                  id="deliveryNotes"
+                  className="w-full p-3 border rounded-lg text-sm"
+                  rows="2"
+                  placeholder="Evt. bemærkninger ved udlevering..."
+                />
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Underskrift:</label>
+                <div className="border-2 border-gray-300 rounded-lg bg-white">
+                  <svg
+                    width="100%"
+                    height="150"
+                    viewBox="0 0 300 150"
+                    className="cursor-crosshair touch-none"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                  >
+                    {signaturePaths.map((path, index) => (
+                      <path
+                        key={index}
+                        d={path}
+                        stroke="#000"
+                        strokeWidth="2"
+                        fill="none"
+                      />
+                    ))}
+                    {currentPath && (
+                      <path
+                        d={currentPath}
+                        stroke="#000"
+                        strokeWidth="2"
+                        fill="none"
+                      />
+                    )}
+                  </svg>
+                </div>
+                <button
+                  onClick={() => {
+                    setSignaturePaths([]);
+                    setCurrentPath('');
+                  }}
+                  className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+                >
+                  Ryd underskrift
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-4 sm:p-6 border-t bg-gray-50">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowSignatureModal(false);
+                    setSelectedOrder(null);
+                    setCustomerName('');
+                    setSignaturePaths([]);
+                  }}
+                  className="flex-1 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-800 px-4 py-3 rounded-xl font-semibold"
+                >
+                  Annuller
+                </button>
+                <button
+                  onClick={() => {
+                    if (!customerName.trim()) {
+                      alert('Indtast kundens navn');
+                      return;
+                    }
+                    if (signaturePaths.length === 0) {
+                      alert('Tegn venligst en underskrift først');
+                      return;
+                    }
+                    
+                    // Get delivery notes
+                    const deliveryNotes = document.getElementById('deliveryNotes').value;
+                    
+                    const svgPaths = signaturePaths.map(path => `<path d="${path}" stroke="#000" stroke-width="2" fill="none"/>`).join('');
+                    const signatureSvg = `<svg width="300" height="150" xmlns="http://www.w3.org/2000/svg">${svgPaths}</svg>`;
+                    const signatureData = `data:image/svg+xml;base64,${btoa(signatureSvg)}`;
+
+                    setShowSignatureModal(false);
+                    
+                    setTimeout(() => {
+                      openEmployeeModal('Vælg medarbejder der bekræfter udlevering', (employee) => {
+                        const currentDate = new Date();
+                        const timestamp = `${currentDate.toLocaleDateString('da-DK')} ${currentDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`;
+                        
+                        setOrders(prev => prev.map(order => 
+                          order.id === selectedOrder.id ? { 
+                            ...order, 
+                            status: 'shipped',
+                            customerSignature: signatureData,
+                            signedBy: customerName,
+                            deliveredBy: employee.name,
+                            deliveryStamp: `${employee.name} - ${employee.id} - ${timestamp}`,
+                            shippedBy: employee.name,
+                            shippedDate: currentDate.toLocaleDateString('da-DK'),
+                            shippedTime: currentDate.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }),
+                            shippingNotes: deliveryNotes || '',
+                            notes: (order.notes || '') + 
+                              `\nUnderskrift modtaget: ${currentDate.toLocaleDateString('da-DK')}` +
+                              `\nKunde: ${customerName}` +
+                              `\nBekræftet af: ${employee.name}` +
+                              (deliveryNotes ? `\nBemærkninger: ${deliveryNotes}` : '')
+                          } : order
+                        ));
+
+                        setSelectedOrder(null);
+                        setSignaturePaths([]);
+                        setCustomerName('');
+                        
+                        alert(`Underskrift gemt!\nOrdre udleveret til ${customerName}\nBekræftet af ${employee.name}`);
+                        
+                        // Navigate back to main menu
+                        navigateToMain();
+                      });
+                    }, 100);
+                  }}
+                  className="flex-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-4 py-3 rounded-xl font-semibold"
+                >
+                  Gem Underskrift
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NOTE MODAL - MOBILE OPTIMIZED */}
+      {showNoteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl">
+            <div className="p-4 sm:p-6 border-b">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg sm:text-xl font-bold">{noteModalConfig.title}</h3>
+                <button onClick={() => {
+                  setShowNoteModal(false);
+                  setNoteModalConfig({ title: '', placeholder: '', callback: null, value: '' });
+                }}>
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-4 sm:p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Bemærkninger:</label>
+                <textarea
+                  value={noteModalConfig.value}
+                  onChange={(e) => setNoteModalConfig(prev => ({ ...prev, value: e.target.value }))}
+                  className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  rows="4"
+                  placeholder={noteModalConfig.placeholder}
+                  autoFocus
+                />
+              </div>
+              
+              <div className="text-xs text-gray-500">
+                * Bemærkninger gemmes i historikken og kan ikke redigeres efterfølgende
+              </div>
+            </div>
+            
+            <div className="p-4 sm:p-6 border-t bg-gray-50">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowNoteModal(false);
+                    setNoteModalConfig({ title: '', placeholder: '', callback: null, value: '' });
+                  }}
+                  className="flex-1 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-800 px-4 py-3 rounded-xl font-semibold"
+                >
+                  Annuller
+                </button>
+                <button
+                  onClick={() => {
+                    if (!noteModalConfig.value.trim()) {
+                      alert('Bemærkninger er påkrævet');
+                      return;
+                    }
+                    if (noteModalConfig.callback) {
+                      noteModalConfig.callback(noteModalConfig.value);
+                    }
+                    setShowNoteModal(false);
+                    setNoteModalConfig({ title: '', placeholder: '', callback: null, value: '' });
+                  }}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-xl font-semibold"
+                >
+                  Gem Bemærkning
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
