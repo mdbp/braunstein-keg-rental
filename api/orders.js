@@ -1,49 +1,71 @@
+import { sql } from '@vercel/postgres';
+
 export default async function handler(req, res) {
-  const shopifyUrl = process.env.SHOPIFY_STORE_URL;
-  const token = process.env.SHOPIFY_ACCESS_TOKEN;
-  
-  // Hvis ingen Shopify credentials, returner test data
-  if (!shopifyUrl || !token) {
-    const testOrders = [
-      {
-        id: '1001',
-        orderNumber: '#1001',
-        customer: 'Copenhagen Restaurant',
-        status: 'pending',
-        rentalStartDate: '2025-09-12',
-        rentalEndDate: '2025-09-19'
-      }
-    ];
-    return res.status(200).json(testOrders);
+  if (req.method === 'GET') {
+    const fromDate = req.query.from || '2026-01-01';
+
+    try {
+      const { rows } = await sql`
+        SELECT * FROM orders
+        WHERE created_at >= ${fromDate}
+        ORDER BY created_at DESC
+      `;
+
+      return res.status(200).json({
+        total: rows.length,
+        orders: rows
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
   }
-  
-  // Hent fra Shopify
-  try {
-    const response = await fetch(
-      `https://${shopifyUrl}/admin/api/2024-01/orders.json?status=any`,
-      {
-        headers: {
-          'X-Shopify-Access-Token': token,
-          'Content-Type': 'application/json'
+
+  if (req.method === 'POST' && req.query.test) {
+    const testOrder = {
+      id: Date.now(),
+      order_number: '9999',
+      email: 'test@example.com',
+      customer: {
+        id: 12345,
+        first_name: 'Test',
+        last_name: 'Kunde',
+        email: 'test@example.com',
+        phone: '+45 12345678',
+        created_at: new Date().toISOString()
+      },
+      line_items: [
+        {
+          id: 'item1',
+          sku: 'BR-IPA-20L',
+          title: 'Braunstein IPA 20L',
+          quantity: 2,
+          price: '850.00'
         }
-      }
-    );
-    
-    const data = await response.json();
-    
-    // Transform Shopify orders til dit format
-    const orders = data.orders?.map(order => ({
-      id: order.id.toString(),
-      orderNumber: `#${order.order_number}`,
-      customer: order.customer?.default_address?.name || 'Guest',
-      status: 'pending',
-      total: order.total_price,
-      items: order.line_items?.length || 0,
-      createdAt: order.created_at
-    })) || [];
-    
-    res.status(200).json(orders);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+      ],
+      shipping_address: {
+        address1: 'Testvej 123',
+        city: 'København',
+        zip: '1000',
+        phone: '+45 12345678'
+      },
+      total_price: '1700.00',
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      await fetch(`https://${req.headers.host}/api/shopify-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testOrder)
+      });
+      return res.status(200).json({
+        success: true,
+        message: 'Test order created'
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
   }
+
+  res.status(405).json({ error: 'Method not allowed' });
 }
