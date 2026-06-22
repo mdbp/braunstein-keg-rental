@@ -3,13 +3,13 @@ import { neon } from '@neondatabase/serverless';
 const sql = neon(process.env.DATABASE_URL);
 
 export default async function handler(req, res) {
-  const shopifyUrl = process.env.SHOPIFY_STORE_URL;
+  const shopifyUrl = process.env.SHOPIFY_STORE_DOMAIN;
   const token = process.env.SHOPIFY_ACCESS_TOKEN;
 
   if (!shopifyUrl || !token) {
     return res.status(200).json({
       error: 'Shopify not configured',
-      message: 'Add SHOPIFY_STORE_URL and SHOPIFY_ACCESS_TOKEN to environment variables'
+      message: 'Add SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN to environment variables'
     });
   }
 
