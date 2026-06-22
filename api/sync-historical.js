@@ -33,7 +33,7 @@ export default async function handler(req, res) {
       }
 
       const response = await fetch(
-        `https://${shopifyUrl}/admin/api/2024-01/orders.json?${params}`,
+        `https://${shopifyUrl}/admin/api/2025-01/orders.json?${params}`,
         { headers: { 'X-Shopify-Access-Token': token } }
       );
 
