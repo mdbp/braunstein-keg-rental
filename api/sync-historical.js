@@ -1,4 +1,6 @@
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
+
+const sql = neon(process.env.DATABASE_URL);
 
 export default async function handler(req, res) {
   const shopifyUrl = process.env.SHOPIFY_STORE_URL;
@@ -15,7 +17,7 @@ export default async function handler(req, res) {
   let allOrders = [];
   let nextPageInfo = null;
   let pageCount = 0;
-  const maxPages = 20; // sikkerhedsgrænse, 250 ordre/side = op til 5000 ordre
+  const maxPages = 20;
 
   try {
     do {
@@ -43,7 +45,6 @@ export default async function handler(req, res) {
       allOrders = allOrders.concat(data.orders || []);
       pageCount++;
 
-      // Shopify sender næste side-info i Link-headeren
       const linkHeader = response.headers.get('Link');
       nextPageInfo = null;
       if (linkHeader && linkHeader.includes('rel="next"')) {
@@ -52,7 +53,6 @@ export default async function handler(req, res) {
       }
     } while (nextPageInfo && pageCount < maxPages);
 
-    // Gem alle hentede ordre i databasen
     let savedCount = 0;
     let skippedCount = 0;
 
@@ -116,7 +116,7 @@ export default async function handler(req, res) {
           RETURNING id
         `;
 
-        if (result.rowCount > 0) {
+        if (result.length > 0) {
           savedCount++;
         } else {
           skippedCount++;
