@@ -24,120 +24,28 @@ export default function BraunsteinKegRentalSystem() {
   const [returnNotes, setReturnNotes] = useState('');
   const [drypbakkeReceived, setDrypbakkeReceived] = useState(false);
   const [isLoadingShopify, setIsLoadingShopify] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
-  const [orders, setOrders] = useState([
-    {
-      id: '1001',
-      orderNumber: '#1001',
-      customer: 'Copenhagen Restaurant',
-      customerPhone: '+45 33 12 45 67',
-      status: 'pending',
-      priority: 'høj',
-      deliveryDate: '12.9.2025',
-      rentalStartDate: '12.9.2025',
-      rentalEndDate: '19.9.2025',
-      items: [
-        { id: '1', name: 'Braunstein Classic IPA 20L', quantity: 2, picked: 0 },
-        { id: '2', name: 'Fadølsanlæg Premium', quantity: 1, picked: 0 }
-      ],
-      totalItems: 3,
-      notes: '',
-      customerSignature: null
-    },
-    {
-      id: '1002',
-      orderNumber: '#1002',
-      customer: 'Bar Brewhouse',
-      customerPhone: '+45 26 78 90 12',
-      status: 'packed',
-      priority: 'normal',
-      deliveryDate: '13.9.2025',
-      rentalStartDate: '13.9.2025',
-      rentalEndDate: '20.9.2025',
-      items: [
-        { id: '3', name: 'Braunstein Pilsner 20L', quantity: 1, picked: 1 },
-        { id: '4', name: 'Braunstein Amber Ale 20L', quantity: 1, picked: 1 }
-      ],
-      totalItems: 2,
-      packedBy: 'Thomas Andersen',
-      packedDate: '13.9.2025',
-      packedTime: '09:15',
-      assignedFacilities: ['ANL-001'],
-      notes: 'Klar til afhentning',
-      customerSignature: null
-    },
-    {
-      id: '1003',
-      orderNumber: '#1003',
-      customer: 'Nyhavn Brasserie',
-      customerPhone: '+45 33 85 22 14',
-      status: 'shipped',
-      priority: 'normal',
-      deliveryDate: '11.9.2025',
-      rentalStartDate: '11.9.2025',
-      rentalEndDate: '10.9.2025',
-      items: [
-        { id: '5', name: 'Braunstein Dark Lager 20L', quantity: 3, picked: 3 },
-        { id: '6', name: 'Fadølsanlæg Standard', quantity: 2, picked: 2 }
-      ],
-      totalItems: 5,
-      packedBy: 'Michael Poulsen',
-      packedDate: '11.9.2025',
-      packedTime: '08:30',
-      packingNotes: 'Pakket med omhu',
-      shippedBy: 'Anders Bang',
-      shippedDate: '11.9.2025',
-      shippedTime: '14:45',
-      shippingNotes: 'Leveret til bagindgang',
-      assignedFacilities: ['ANL-002', 'ANL-004'],
-      notes: 'Leveret - afventer retur',
-      customerSignature: null
-    }
-  ]);
+  // Orders now start EMPTY - they are loaded from the API on mount
+  const [orders, setOrders] = useState([]);
 
-  const [facilities, setFacilities] = useState([
-    { 
-      id: 'ANL-001', 
-      name: 'Anlæg 001 - 2 haners anlæg', 
-      status: 'active', 
-      lastService: '15.8.2025', 
-      lastCleaned: '1.9.2025', 
-      totalRentals: 28
-    },
-    { 
-      id: 'ANL-002', 
-      name: 'Anlæg 002 - 2 haners anlæg', 
-      status: 'active', 
-      lastService: '20.7.2025', 
-      lastCleaned: '28.8.2025', 
-      totalRentals: 31
-    },
-    { 
-      id: 'ANL-003', 
-      name: 'Anlæg 003 - 2 haners anlæg', 
-      status: 'maintenance', 
-      lastService: '1.9.2025', 
-      serviceNote: 'CO2 system reparation', 
-      lastCleaned: '2.9.2025', 
-      totalRentals: 19
-    },
-    { 
-      id: 'ANL-004', 
-      name: 'Anlæg 004 - 2 haners anlæg', 
-      status: 'active', 
-      lastService: '10.8.2025', 
-      lastCleaned: '5.9.2025', 
-      totalRentals: 15
-    },
-    { 
-      id: 'ANL-005', 
-      name: 'Anlæg 005 - 2 haners anlæg', 
-      status: 'active', 
-      lastService: '25.7.2025', 
-      lastCleaned: '30.8.2025', 
-      totalRentals: 22
+  const generateInitialFacilities = () => {
+    const list = [];
+    for (let i = 1; i <= 50; i++) {
+      const num = String(i).padStart(3, '0');
+      list.push({
+        id: `ANL-${num}`,
+        name: `Anlæg ${num} - 2 haners anlæg`,
+        status: 'active',
+        lastService: '1.9.2025',
+        lastCleaned: '10.9.2025',
+        totalRentals: 0
+      });
     }
-  ]);
+    return list;
+  };
+
+  const [facilities, setFacilities] = useState(generateInitialFacilities());
 
   const employees = [
     { id: 'EMP001', name: 'Michael Poulsen' },
@@ -155,6 +63,65 @@ export default function BraunsteinKegRentalSystem() {
     { id: 'retur', title: 'Retur Ordre', subtitle: 'Returnerede', icon: RotateCcw, color: 'purple', status: 'returned' }
   ];
 
+  // ===== LIVE ORDER FETCHING =====
+  // Converts a Postgres order row (snake_case, from /api/orders) into the
+  // shape this component expects (camelCase, matching the old mock data).
+  const mapApiOrderToAppOrder = (row) => {
+    const itemsFromDb = Array.isArray(row.items) ? row.items : [];
+    const formatDate = (iso) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('da-DK');
+    };
+
+    return {
+      id: String(row.shopify_id ?? row.id),
+      orderNumber: row.order_number || `#${row.shopify_id ?? row.id}`,
+      customer: row.customer_name || 'Guest',
+      customerPhone: row.customer_phone || '',
+      status: row.status || 'pending',
+      priority: row.priority || 'normal',
+      deliveryDate: formatDate(row.delivery_date),
+      rentalStartDate: formatDate(row.created_at),
+      rentalEndDate: formatDate(row.delivery_date),
+      items: itemsFromDb.map((item, idx) => ({
+        id: String(item.id ?? idx),
+        name: item.name || item.sku || 'Vare',
+        quantity: item.quantity ?? 1,
+        picked: 0
+      })),
+      totalItems: itemsFromDb.reduce((sum, item) => sum + (item.quantity || 0), 0),
+      notes: row.notes || '',
+      customerSignature: null
+    };
+  };
+
+  const loadOrdersFromApi = async () => {
+    setIsLoadingShopify(true);
+    setLoadError(null);
+    try {
+      const response = await fetch('/api/orders?from=2026-01-01');
+      if (!response.ok) {
+        throw new Error(`API svarede med status ${response.status}`);
+      }
+      const data = await response.json();
+      const rawOrders = data.orders || [];
+      const mapped = rawOrders.map(mapApiOrderToAppOrder);
+      setOrders(mapped);
+    } catch (error) {
+      console.error('Fejl ved hentning af ordre:', error);
+      setLoadError(error.message);
+    } finally {
+      setIsLoadingShopify(false);
+    }
+  };
+
+  // Load real orders once when the app first mounts
+  useEffect(() => {
+    loadOrdersFromApi();
+  }, []);
+
   // Helper functions
   const getOrdersByStatus = (status) => {
     if (status === 'overdue') {
@@ -162,7 +129,8 @@ export default function BraunsteinKegRentalSystem() {
       today.setHours(0, 0, 0, 0);
       return orders.filter(order => {
         if (order.status !== 'shipped') return false;
-        const dateParts = order.rentalEndDate.split('.');
+        const dateParts = (order.rentalEndDate || '').split('.');
+        if (dateParts.length !== 3) return false;
         const endDate = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
         endDate.setHours(0, 0, 0, 0);
         return endDate < today;
@@ -388,46 +356,6 @@ export default function BraunsteinKegRentalSystem() {
     }, 100);
   };
 
-  // Shopify integration
-  const fetchShopifyOrders = async () => {
-    setIsLoadingShopify(true);
-    try {
-      // Simulate API call
-      setTimeout(() => {
-        const newOrder = {
-          id: Date.now().toString(),
-          orderNumber: `#${1004 + orders.length - 3}`,
-          customer: 'Shopify Kunde',
-          customerPhone: '+45 ' + Math.floor(Math.random() * 90000000 + 10000000),
-          status: 'pending',
-          priority: 'høj',
-          deliveryDate: new Date(Date.now() + 86400000).toLocaleDateString('da-DK'),
-          rentalStartDate: new Date(Date.now() + 86400000).toLocaleDateString('da-DK'),
-          rentalEndDate: new Date(Date.now() + 7 * 86400000).toLocaleDateString('da-DK'),
-          items: [
-            { 
-              id: 'SH' + Date.now(), 
-              name: 'Braunstein Special 20L', 
-              quantity: 2, 
-              picked: 0 
-            }
-          ],
-          totalItems: 2,
-          notes: 'Ordre fra Shopify',
-          customerSignature: null
-        };
-        
-        setOrders(prev => [...prev, newOrder]);
-        alert(`Ny ordre fra Shopify: ${newOrder.orderNumber}`);
-        setIsLoadingShopify(false);
-      }, 1500);
-      
-    } catch (error) {
-      console.error('Fejl ved hentning:', error);
-      setIsLoadingShopify(false);
-    }
-  };
-
   // Admin functions
   const updateFacility = (facilityId, updates) => {
     setFacilities(prev => prev.map(facility => 
@@ -507,6 +435,12 @@ export default function BraunsteinKegRentalSystem() {
             </div>
             
             <h1 className="text-xl font-bold text-center mt-3 mb-1">Braunstein Keg Rental</h1>
+
+            {loadError && (
+              <div className="mx-2 mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg p-2">
+                Kunne ikke hente live ordre: {loadError}
+              </div>
+            )}
             
             {/* STATISTICS BAR */}
             <div className="mt-3 mx-2 bg-gradient-to-r from-blue-50 to-green-50 border border-gray-200 rounded-lg p-2">
@@ -540,12 +474,12 @@ export default function BraunsteinKegRentalSystem() {
                 <div className="w-px h-10 bg-gray-300"></div>
                 
                 <button 
-                  onClick={fetchShopifyOrders}
+                  onClick={loadOrdersFromApi}
                   disabled={isLoadingShopify}
                   className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center"
                 >
                   <RefreshCw className={`w-4 h-4 ${isLoadingShopify ? 'animate-spin' : ''}`} />
-                  <span className="ml-1">{isLoadingShopify ? 'Henter' : 'Shopify'}</span>
+                  <span className="ml-1">{isLoadingShopify ? 'Henter' : 'Opdater'}</span>
                 </button>
               </div>
             </div>
@@ -655,6 +589,9 @@ export default function BraunsteinKegRentalSystem() {
                 {renderOrderActions(order)}
               </div>
             ))}
+            {getOrdersByStatus(categories.find(c => c.id === selectedCategory)?.status).length === 0 && (
+              <p className="text-center text-gray-500 text-sm py-8">Ingen ordre i denne kategori.</p>
+            )}
           </div>
         </div>
       )}
