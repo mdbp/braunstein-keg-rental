@@ -1,11 +1,23 @@
-import { shopifyOrders } from './shopify-webhook.js';
+import { sql } from '@vercel/postgres';
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method === 'GET') {
-    return res.status(200).json({
-      total: shopifyOrders.length,
-      orders: shopifyOrders
-    });
+    const fromDate = req.query.from || '2026-01-01';
+
+    try {
+      const { rows } = await sql`
+        SELECT * FROM orders
+        WHERE created_at >= ${fromDate}
+        ORDER BY created_at DESC
+      `;
+
+      return res.status(200).json({
+        total: rows.length,
+        orders: rows
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
   }
 
   if (req.method === 'POST' && req.query.test) {
@@ -41,17 +53,19 @@ export default function handler(req, res) {
       created_at: new Date().toISOString()
     };
 
-    // Simuler webhook kald
-    return fetch(`https://${req.headers.host}/api/shopify-webhook`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testOrder)
-    }).then(() => {
-      res.status(200).json({ 
-        success: true, 
-        message: 'Test order created' 
+    try {
+      await fetch(`https://${req.headers.host}/api/shopify-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testOrder)
       });
-    });
+      return res.status(200).json({
+        success: true,
+        message: 'Test order created'
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
   }
 
   res.status(405).json({ error: 'Method not allowed' });
