@@ -1,11 +1,13 @@
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
+
+const sql = neon(process.env.DATABASE_URL);
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     const fromDate = req.query.from || '2026-01-01';
 
     try {
-      const { rows } = await sql`
+      const rows = await sql`
         SELECT * FROM orders
         WHERE created_at >= ${fromDate}
         ORDER BY created_at DESC
