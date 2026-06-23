@@ -81,13 +81,23 @@ export default async function handler(req, res) {
           `;
         }
 
-        const items = order.line_items?.map(item => ({
-          id: item.id,
-          sku: item.sku,
-          name: item.title,
-          quantity: item.quantity,
-          price: item.price
-        })) || [];
+        const items = order.line_items?.map(item => {
+          const props = item.properties || [];
+          const findProp = (name) => {
+            const match = props.find(p => p.name === name);
+            return match ? match.value : null;
+          };
+          return {
+            id: item.id,
+            sku: item.sku,
+            name: item.title,
+            quantity: item.quantity,
+            price: item.price,
+            rentalStartDate: findProp('Start dato') || findProp('_Start dato') || null,
+            rentalEndDate: findProp('Slut dato') || findProp('_Slut dato') || null,
+            deliveryMethod: findProp('_Leveringsmetode') || findProp('_deliveryMethod') || null
+          };
+        }) || [];
 
         const result = await sql`
           INSERT INTO orders (
