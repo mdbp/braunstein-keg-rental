@@ -284,6 +284,26 @@ export default function BraunsteinKegRentalSystem() {
     setEmployeeModalConfig({ title: '', callback: null });
   };
 
+  // Persist a status change to the database via /api/update-order-status
+  const persistOrderStatus = async (shopifyId, payload) => {
+    try {
+      const response = await fetch('/api/update-order-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopifyId, ...payload })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Status ${response.status}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Kunne ikke gemme status i databasen:', error);
+      alert(`Advarsel: Status blev ikke gemt permanent (${error.message}). Genindlæsning af siden vil miste denne ændring.`);
+      return false;
+    }
+  };
+
   // Order management
   const startOrderPicking = (order) => {
     setSelectedOrder(order);
@@ -306,7 +326,7 @@ export default function BraunsteinKegRentalSystem() {
   const completeOrderPacking = (orderId, selectedFacilities) => {
     const packingNotes = window.prompt('Indtast evt. bemærkninger:') || '';
     
-    openEmployeeModal('Vælg medarbejder', (employee) => {
+    openEmployeeModal('Vælg medarbejder', async (employee) => {
       const currentDate = new Date();
       
       setFacilities(prev => prev.map(facility => {
@@ -315,6 +335,13 @@ export default function BraunsteinKegRentalSystem() {
         }
         return facility;
       }));
+
+      await persistOrderStatus(orderId, {
+        status: 'packed',
+        employee: employee.name,
+        facilities: selectedFacilities.map(f => f.id),
+        packingNotes
+      });
       
       setOrders(prev => prev.map(order => {
         if (order.id === orderId) {
@@ -414,7 +441,16 @@ export default function BraunsteinKegRentalSystem() {
     setShowReturnModal(false);
     
     setTimeout(() => {
-      openEmployeeModal('Vælg medarbejder', (employee) => {
+      openEmployeeModal('Vælg medarbejder', async (employee) => {
+        await persistOrderStatus(savedReturnOrder.id, {
+          status: 'returned',
+          employee: employee.name,
+          emptyKegs: savedEmptyKegs,
+          fullKegs: savedFullKegs,
+          returnNotes: savedReturnNotes,
+          drypbakkeReceived: savedDrypbakkeReceived
+        });
+
         setOrders(prevOrders =>
           prevOrders.map(o =>
             o.id === savedReturnOrder.id
@@ -1050,7 +1086,13 @@ export default function BraunsteinKegRentalSystem() {
                       return;
                     }
                     
-                    openEmployeeModal('Vælg medarbejder', (employee) => {
+                    openEmployeeModal('Vælg medarbejder', async (employee) => {
+                      await persistOrderStatus(selectedOrder.id, {
+                        status: 'shipped',
+                        employee: employee.name,
+                        customerSignedName: customerName
+                      });
+
                       setOrders(prev => prev.map(order => 
                         order.id === selectedOrder.id 
                           ? { ...order, status: 'shipped', shippedBy: employee.name }
