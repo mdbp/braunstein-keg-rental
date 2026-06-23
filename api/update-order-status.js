@@ -39,6 +39,7 @@ export default async function handler(req, res) {
       noteBlock = `\n\n--- RETURNERET ---\nMedarbejder: ${employee}\nDato: ${dateStr}\nTid: ${timeStr}\nTomme fustager: ${emptyKegs ?? 0}\nFyldte fustager: ${fullKegs ?? 0}\nDrypbakke: ${drypbakkeReceived ? 'Ja' : 'Nej'}${returnNotes ? `\nBemærkning: ${returnNotes}` : ''}`;
     }
 
+    // 1) Update our own Postgres database first (source of truth for the app)
     const result = await sql`
       UPDATE orders
       SET
@@ -52,9 +53,54 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Ordre ikke fundet i databasen' });
     }
 
+    const updatedOrder = result[0];
+
+    // 2) Mirror the note back to Shopify itself, best-effort.
+    // If this fails, we still consider the request successful since our
+    // own database (the source of truth for the app) was updated.
+    let shopifySyncError = null;
+    const shopifyUrl = process.env.SHOPIFY_STORE_DOMAIN;
+    const token = process.env.SHOPIFY_ACCESS_TOKEN;
+
+    if (shopifyUrl && token) {
+      try {
+        const shopifyResponse = await fetch(
+          `https://${shopifyUrl}/admin/api/2025-01/orders/${shopifyId}.json`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Shopify-Access-Token': token
+            },
+            body: JSON.stringify({
+              order: {
+                id: shopifyId,
+                note: updatedOrder.notes
+              }
+            })
+          }
+        );
+
+        if (!shopifyResponse.ok) {
+          const errText = await shopifyResponse.text();
+          shopifySyncError = `Shopify svarede ${shopifyResponse.status}: ${errText}`;
+        }
+      } catch (err) {
+        shopifySyncError = err.message;
+      }
+    } else {
+      shopifySyncError = 'Shopify credentials ikke konfigureret';
+    }
+
+    if (shopifySyncError) {
+      console.error('Kunne ikke skrive note tilbage til Shopify:', shopifySyncError);
+    }
+
     res.status(200).json({
       success: true,
-      order: result[0]
+      order: updatedOrder,
+      shopifySynced: !shopifySyncError,
+      shopifySyncError
     });
   } catch (error) {
     console.error('Fejl ved opdatering af ordrestatus:', error);
