@@ -67,6 +67,22 @@ export default function BraunsteinKegRentalSystem() {
   // ===== LIVE ORDER FETCHING =====
   // Converts a Postgres order row (snake_case, from /api/orders) into the
   // shape this component expects (camelCase, matching the old mock data).
+  const formatDanishDate = (input) => {
+    if (!input) return '';
+    // Handles both ISO dates ("2026-07-14") and DD/MM/YYYY ("14/07/2026")
+    let d;
+    if (/^\d{4}-\d{2}-\d{2}/.test(input)) {
+      d = new Date(input);
+    } else if (/^\d{2}\/\d{2}\/\d{4}/.test(input)) {
+      const [day, month, year] = input.split('/');
+      d = new Date(Number(year), Number(month) - 1, Number(day));
+    } else {
+      d = new Date(input);
+    }
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('da-DK');
+  };
+
   const mapApiOrderToAppOrder = (row) => {
     const itemsFromDb = Array.isArray(row.items) ? row.items : [];
     const formatDate = (iso) => {
@@ -76,6 +92,42 @@ export default function BraunsteinKegRentalSystem() {
       return d.toLocaleDateString('da-DK');
     };
 
+    // Find the earliest rental start and latest rental end across all line items
+    const itemStartDates = itemsFromDb
+      .map(item => item.rentalStartDate)
+      .filter(Boolean);
+    const itemEndDates = itemsFromDb
+      .map(item => item.rentalEndDate)
+      .filter(Boolean);
+
+    const toSortableDate = (input) => {
+      if (/^\d{2}\/\d{2}\/\d{4}/.test(input)) {
+        const [day, month, year] = input.split('/');
+        return new Date(Number(year), Number(month) - 1, Number(day));
+      }
+      return new Date(input);
+    };
+
+    let rentalStartDate = '';
+    let rentalEndDate = '';
+
+    if (itemStartDates.length > 0) {
+      const earliest = itemStartDates.reduce((a, b) =>
+        toSortableDate(a) < toSortableDate(b) ? a : b
+      );
+      rentalStartDate = formatDanishDate(earliest);
+    }
+    if (itemEndDates.length > 0) {
+      const latest = itemEndDates.reduce((a, b) =>
+        toSortableDate(a) > toSortableDate(b) ? a : b
+      );
+      rentalEndDate = formatDanishDate(latest);
+    }
+
+    // Fall back to order-level dates if no line-item rental dates were found
+    if (!rentalStartDate) rentalStartDate = formatDate(row.created_at);
+    if (!rentalEndDate) rentalEndDate = formatDate(row.delivery_date);
+
     return {
       id: String(row.shopify_id ?? row.id),
       orderNumber: row.order_number || `#${row.shopify_id ?? row.id}`,
@@ -84,8 +136,8 @@ export default function BraunsteinKegRentalSystem() {
       status: row.status || 'pending',
       priority: row.priority || 'normal',
       deliveryDate: formatDate(row.delivery_date),
-      rentalStartDate: formatDate(row.created_at),
-      rentalEndDate: formatDate(row.delivery_date),
+      rentalStartDate,
+      rentalEndDate,
       items: itemsFromDb.map((item, idx) => ({
         id: String(item.id ?? idx),
         name: item.name || item.sku || 'Vare',
