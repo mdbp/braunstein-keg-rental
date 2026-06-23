@@ -133,7 +133,7 @@ export default function BraunsteinKegRentalSystem() {
     return isNaN(parsed.getTime()) ? null : parsed;
   };
 
-  // Helper: does this order's rental period overlap with the next 14 days?
+  // Helper: does this order's rental START date fall within the next 14 days?
   const isWithinNext14Days = (order) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -141,16 +141,12 @@ export default function BraunsteinKegRentalSystem() {
     horizon.setDate(horizon.getDate() + 14);
 
     const start = parseDanishDate(order.rentalStartDate);
-    const end = parseDanishDate(order.rentalEndDate);
 
     // If we can't parse a date, don't hide the order - better to show than lose it
-    if (!start && !end) return true;
+    if (!start) return true;
 
-    const effectiveStart = start || end;
-    const effectiveEnd = end || start;
-
-    // Overlaps the [today, horizon] window
-    return effectiveEnd >= today && effectiveStart <= horizon;
+    start.setHours(0, 0, 0, 0);
+    return start >= today && start <= horizon;
   };
 
   // Helper functions
