@@ -13,6 +13,7 @@ export default function BraunsteinKegRentalSystem() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedFacilities, setSelectedFacilities] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showNext14DaysOnly, setShowNext14DaysOnly] = useState(false);
   const [pickingQuantities, setPickingQuantities] = useState({});
   const [customerName, setCustomerName] = useState('');
   const [signaturePaths, setSignaturePaths] = useState([]);
@@ -122,12 +123,43 @@ export default function BraunsteinKegRentalSystem() {
     loadOrdersFromApi();
   }, []);
 
+  // Helper: parse a "d.M.yyyy" Danish date string into a Date object
+  const parseDanishDate = (dateStr) => {
+    if (!dateStr) return null;
+    const parts = dateStr.split('.');
+    if (parts.length !== 3) return null;
+    const [day, month, year] = parts;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  // Helper: does this order's rental period overlap with the next 14 days?
+  const isWithinNext14Days = (order) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const horizon = new Date(today);
+    horizon.setDate(horizon.getDate() + 14);
+
+    const start = parseDanishDate(order.rentalStartDate);
+    const end = parseDanishDate(order.rentalEndDate);
+
+    // If we can't parse a date, don't hide the order - better to show than lose it
+    if (!start && !end) return true;
+
+    const effectiveStart = start || end;
+    const effectiveEnd = end || start;
+
+    // Overlaps the [today, horizon] window
+    return effectiveEnd >= today && effectiveStart <= horizon;
+  };
+
   // Helper functions
   const getOrdersByStatus = (status) => {
+    let filtered;
     if (status === 'overdue') {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      return orders.filter(order => {
+      filtered = orders.filter(order => {
         if (order.status !== 'shipped') return false;
         const dateParts = (order.rentalEndDate || '').split('.');
         if (dateParts.length !== 3) return false;
@@ -135,8 +167,15 @@ export default function BraunsteinKegRentalSystem() {
         endDate.setHours(0, 0, 0, 0);
         return endDate < today;
       });
+    } else {
+      filtered = orders.filter(order => order.status === status);
     }
-    return orders.filter(order => order.status === status);
+
+    if (showNext14DaysOnly) {
+      filtered = filtered.filter(isWithinNext14Days);
+    }
+
+    return filtered;
   };
 
   const getColorClasses = (color) => {
@@ -563,6 +602,16 @@ export default function BraunsteinKegRentalSystem() {
               ← Tilbage
             </button>
             <h1 className="text-lg font-bold">{categories.find(c => c.id === selectedCategory)?.title}</h1>
+            <button
+              onClick={() => setShowNext14DaysOnly(prev => !prev)}
+              className={`mt-2 px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-colors ${
+                showNext14DaysOnly
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300'
+              }`}
+            >
+              {showNext14DaysOnly ? '✓ Kun næste 14 dage' : 'Vis kun næste 14 dage'}
+            </button>
           </div>
 
           <div className="p-4 space-y-4">
