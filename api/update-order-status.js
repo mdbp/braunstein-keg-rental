@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     const dateStr = now.toLocaleDateString('da-DK');
     const timeStr = now.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
 
-    // Build a human-readable note block, matching the old Shopify note format
+    // Build a human-readable note block matching the old Shopify note format
     let noteBlock = '';
     if (status === 'packed') {
       noteBlock = `\n\n--- PAKKET ---\nAnlæg nr.: ${(facilities || []).join(', ')}\nMedarbejder: ${employee}\nDato: ${dateStr}\nTid: ${timeStr}${packingNotes ? `\nBemærkning: ${packingNotes}` : ''}`;
@@ -39,13 +39,13 @@ export default async function handler(req, res) {
       noteBlock = `\n\n--- RETURNERET ---\nMedarbejder: ${employee}\nDato: ${dateStr}\nTid: ${timeStr}\nTomme fustager: ${emptyKegs ?? 0}\nFyldte fustager: ${fullKegs ?? 0}\nDrypbakke: ${drypbakkeReceived ? 'Ja' : 'Nej'}${returnNotes ? `\nBemærkning: ${returnNotes}` : ''}`;
     }
 
-    // 1) Update our own Postgres database first (source of truth for the app)
+    // 1) Update our own Postgres database (source of truth for the app)
     const result = await sql`
       UPDATE orders
       SET
         status = ${status},
         notes = COALESCE(notes, '') || ${noteBlock}
-      WHERE shopify_id = ${shopifyId}
+      WHERE shopify_id = ${BigInt(shopifyId)}
       RETURNING id, shopify_id, status, notes
     `;
 
@@ -55,9 +55,7 @@ export default async function handler(req, res) {
 
     const updatedOrder = result[0];
 
-    // 2) Mirror the note back to Shopify itself, best-effort.
-    // If this fails, we still consider the request successful since our
-    // own database (the source of truth for the app) was updated.
+    // 2) Mirror the note back to Shopify (best-effort)
     let shopifySyncError = null;
     const shopifyUrl = process.env.SHOPIFY_STORE_DOMAIN;
     const token = process.env.SHOPIFY_ACCESS_TOKEN;
@@ -65,7 +63,7 @@ export default async function handler(req, res) {
     if (shopifyUrl && token) {
       try {
         const shopifyResponse = await fetch(
-          `https://${shopifyUrl}/admin/api/2025-01/orders/${shopifyId}.json`,
+          `https://${shopifyUrl}/admin/api/2025-01/orders/${BigInt(shopifyId)}.json`,
           {
             method: 'PUT',
             headers: {
@@ -74,7 +72,7 @@ export default async function handler(req, res) {
             },
             body: JSON.stringify({
               order: {
-                id: shopifyId,
+                id: Number(shopifyId),
                 note: updatedOrder.notes
               }
             })
