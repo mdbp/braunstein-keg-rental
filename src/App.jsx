@@ -150,6 +150,8 @@ export default function BraunsteinKegRentalSystem() {
     };
   };
 
+  const [lastUpdated, setLastUpdated] = useState(null);
+
   const loadOrdersFromApi = async () => {
     setIsLoadingShopify(true);
     setLoadError(null);
@@ -162,6 +164,7 @@ export default function BraunsteinKegRentalSystem() {
       const rawOrders = data.orders || [];
       const mapped = rawOrders.map(mapApiOrderToAppOrder);
       setOrders(mapped);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Fejl ved hentning af ordre:', error);
       setLoadError(error.message);
@@ -170,9 +173,13 @@ export default function BraunsteinKegRentalSystem() {
     }
   };
 
-  // Load real orders once when the app first mounts
+  // Load real orders when the app first mounts, then every 5 minutes
   useEffect(() => {
     loadOrdersFromApi();
+    const interval = setInterval(() => {
+      loadOrdersFromApi();
+    }, 5 * 60 * 1000); // 5 minutter
+    return () => clearInterval(interval);
   }, []);
 
   // Helper: parse a "d.M.yyyy" Danish date string into a Date object
@@ -599,10 +606,17 @@ export default function BraunsteinKegRentalSystem() {
                 <button 
                   onClick={loadOrdersFromApi}
                   disabled={isLoadingShopify}
-                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center"
+                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex flex-col items-center"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isLoadingShopify ? 'animate-spin' : ''}`} />
-                  <span className="ml-1">{isLoadingShopify ? 'Henter' : 'Opdater'}</span>
+                  <div className="flex items-center">
+                    <RefreshCw className={`w-4 h-4 ${isLoadingShopify ? 'animate-spin' : ''}`} />
+                    <span className="ml-1">{isLoadingShopify ? 'Henter' : 'Opdater'}</span>
+                  </div>
+                  {lastUpdated && !isLoadingShopify && (
+                    <span className="text-green-100 text-xs mt-0.5">
+                      {lastUpdated.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
