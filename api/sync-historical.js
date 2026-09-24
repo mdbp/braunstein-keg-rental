@@ -93,8 +93,8 @@ export default async function handler(req, res) {
             name: item.title,
             quantity: item.quantity,
             price: item.price,
-            rentalStartDate: findProp('Start dato') || findProp('_Start dato') || null,
-            rentalEndDate: findProp('Slut dato') || findProp('_Slut dato') || null,
+            rentalStartDate: findProp('Start dato') || findProp('_Start dato') || getCrPickupDates(findProp).start,
+            rentalEndDate: findProp('Slut dato') || findProp('_Slut dato') || getCrPickupDates(findProp).end,
             deliveryMethod: findProp('_Leveringsmetode') || findProp('_deliveryMethod') || null
           };
         }) || [];
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
             'shopify',
             ${order.created_at}
           )
-          ON CONFLICT (shopify_id) DO NOTHING
+          ON CONFLICT (shopify_id) DO UPDATE SET items = EXCLUDED.items WHERE orders.status = 'pending'
           RETURNING id
         `;
 
@@ -147,4 +147,23 @@ export default async function handler(req, res) {
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
+}
+
+// _formattedDate (M/D/YYYY) på _CRid pickup-linjer → start = dato, slut = +8 dage
+function getCrPickupDates(findProp) {
+  const crid = String(findProp('_CRid')) === 'true';
+  const pickup = findProp('_deliveryMethod') === 'pickup';
+  const raw = findProp('_formattedDate');
+  if (!crid || !pickup || !raw) return { start: null, end: null };
+
+  const [m, d, y] = String(raw).split('/').map(Number);
+  if (!m || !d || !y) return { start: null, end: null };
+
+  const start = new Date(y, m - 1, d);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 8);
+
+  const fmt = (dt) =>
+    `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+  return { start: fmt(start), end: fmt(end) };
 }
