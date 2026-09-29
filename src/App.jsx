@@ -156,6 +156,15 @@ export default function BraunsteinKegRentalSystem() {
     setIsLoadingShopify(true);
     setLoadError(null);
     try {
+      // Sikkerhedsnet: hent nye ordre fra Shopify ind i databasen (seneste 7 dage),
+      // så ordre kommer med selv hvis Shopify-webhooken ikke leverer.
+      try {
+        const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        await fetch(`/api/sync-historical?from=${since}`);
+      } catch (syncError) {
+        console.warn('Synk fra Shopify fejlede, viser data fra databasen:', syncError);
+      }
+
       const response = await fetch('/api/orders?from=2026-01-01');
       if (!response.ok) {
         throw new Error(`API svarede med status ${response.status}`);
@@ -178,7 +187,7 @@ export default function BraunsteinKegRentalSystem() {
     loadOrdersFromApi();
     const interval = setInterval(() => {
       loadOrdersFromApi();
-    }, 5 * 60 * 1000); // 5 minutter
+    }, 2 * 60 * 1000); // 2 minutter
     return () => clearInterval(interval);
   }, []);
 
