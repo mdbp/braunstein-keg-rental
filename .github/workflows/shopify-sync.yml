@@ -1,0 +1,20 @@
+name: Shopify sync
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # hvert 5. minut (UTC)
+  workflow_dispatch:         # mulighed for manuel kørsel fra GitHub
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Synk seneste 7 dages ordre fra Shopify
+        run: |
+          FROM=$(date -u -d '7 days ago' +%Y-%m-%d)
+          echo "Synker fra $FROM"
+          RESPONSE=$(curl -sS --fail --max-time 60 \
+            "https://braunstein-keg-rental.vercel.app/api/sync-historical?from=$FROM")
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"success":true'
